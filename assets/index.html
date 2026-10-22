@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="bs" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; connect-src 'self' blob: data:; worker-src 'self' blob:">
+<title>Polica</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- icons, drawn once -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8z"/><path d="m3.5 12 8.5 4.5 8.5-4.5"/><path d="m3.5 16 8.5 4.5 8.5-4.5"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3.5 8V5.5a2 2 0 0 1 2-2H8M16 3.5h2.5a2 2 0 0 1 2 2V8M20.5 16v2.5a2 2 0 0 1-2 2H16M8 20.5H5.5a2 2 0 0 1-2-2V16"/><path d="M7.5 8.5v7M10.5 8.5v7M13.5 8.5v7M16.5 8.5v7" class="thin"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M3.5 15h17M9.5 4.5v15M15 4.5v15"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4.5 8.5h13l-3.5-3.5M19.5 15.5h-13l3.5 3.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.75" cy="7" r="1"/><circle cx="4.75" cy="12" r="1"/><circle cx="4.75" cy="17" r="1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2M6.5 7l1 12a2 2 0 0 0 2 1.5h5a2 2 0 0 0 2-1.5l1-12"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3.5 8 4v9l-8 4-8-4v-9z"/><path d="m4 7.5 8 4 8-4M12 11.5v9"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.8v.2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M16 10v4"/></symbol>
+</svg>
+
+<!-- Home: search, recent finds, scan -->
+<section id="home" class="screen is-active" aria-label="Pretraga">
+  <div class="scroll home-scroll">
+    <header class="home-head">
+      <div class="home-title">
+        <h1>Polica</h1>
+        <p id="homeStats"></p>
+        <p class="work-line" id="workLine" hidden><i></i><span></span></p>
+      </div>
+      <div class="head-btns">
+        <button class="round-btn" id="openSettings" type="button" aria-label="Postavke"><svg class="ico"><use href="#i-gear"/></svg></button>
+        <button class="round-btn" id="openPlans" type="button" aria-label="Planogrami">
+          <svg class="ico"><use href="#i-layers"/></svg>
+          <span class="badge" id="planCount">0</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="seg" id="modeSeg" role="tablist" aria-label="Pretraga">
+      <button class="seg-btn" type="button" role="tab" data-mode="plan" aria-selected="true">Planogrami</button>
+      <button class="seg-btn" type="button" role="tab" data-mode="orders" aria-selected="false">Narudžbe kupaca</button>
+    </div>
+
+    <form class="search" id="searchForm" role="search" autocomplete="off">
+      <svg class="ico search-ico" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="q" type="search" inputmode="search" enterkeyhint="search" placeholder="Šifra ili naziv artikla" aria-label="Šifra ili naziv artikla" spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button class="search-clear" id="clearQ" type="button" aria-label="Obriši pretragu" hidden><svg class="ico"><use href="#i-x"/></svg></button>
+    </form>
+
+    <button class="update-bar" id="updateBar" type="button" hidden></button>
+
+    <button class="orders-bar" id="ordersBar" type="button" hidden></button>
+
+    <div id="results" hidden></div>
+
+    <div id="recentWrap">
+      <div class="sec-head" id="recentHead">
+        <h2>Zadnje traženo</h2>
+        <button class="text-btn" id="clearRecent" type="button">Očisti</button>
+      </div>
+      <div id="recent"></div>
+      <div class="tips" id="recentEmpty">
+        <div class="tip">
+          <span class="tip-ico"><svg class="ico"><use href="#i-scan"/></svg></span>
+          <div><b>Skeniraj barkod</b><p>Polica odmah pokaže modul, policu i notch, i označi artikal na planogramu.</p></div>
+        </div>
+        <div class="tip">
+          <span class="tip-ico"><svg class="ico"><use href="#i-search"/></svg></span>
+          <div><b>Ili upiši šifru ili naziv</b><p>Može i na bosanskom: okvir, korpa, svijeća, jastuk.</p></div>
+        </div>
+        <div class="tip">
+          <span class="tip-ico"><svg class="ico"><use href="#i-link"/></svg></span>
+          <div><b>Novi barkod poveži jednom</b><p>Ako barkod nije poznat, upiši šifru s naljepnice i od tada radi odmah.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="welcome" class="welcome" hidden>
+      <div class="welcome-art" aria-hidden="true">
+        <svg viewBox="0 0 320 200">
+          <defs>
+            <linearGradient id="wg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="g-a"/><stop offset="1" class="g-b"/></linearGradient>
+          </defs>
+          <rect x="18" y="14" width="284" height="172" rx="28" fill="url(#wg)"/>
+          <rect x="52" y="44" width="8" height="122" rx="4" class="w-up"/><rect x="260" y="44" width="8" height="122" rx="4" class="w-up"/>
+          <rect x="60" y="98" width="200" height="8" rx="4" class="w-shelf"/><rect x="60" y="146" width="200" height="8" rx="4" class="w-shelf"/>
+          <rect x="76" y="62" width="30" height="36" rx="7" class="w-prod"/><path d="M122 98c0-14 8-18 8-26v-6h14v6c0 8 8 12 8 26z" class="w-prod"/>
+          <rect x="166" y="54" width="40" height="44" rx="9" class="w-hero"/><rect x="220" y="72" width="24" height="26" rx="6" class="w-prod"/>
+          <rect x="80" y="118" width="46" height="28" rx="7" class="w-prod"/><rect x="138" y="112" width="34" height="34" rx="17" class="w-prod"/><rect x="186" y="122" width="54" height="24" rx="7" class="w-prod"/>
+          <rect x="158" y="46" width="56" height="60" rx="14" class="w-ring"/>
+        </svg>
+      </div>
+      <h2>Prvo dodaj planograme</h2>
+      <p>Izaberi PDF planograme na telefonu. Možeš ih označiti sve odjednom.</p>
+      <p>Kad stigne novi planogram za isti odjel, dodaj ga na isti način i Polica sama zamijeni stari.</p>
+      <button class="btn btn-primary btn-block" id="welcomeAdd" type="button"><svg class="ico"><use href="#i-plus"/></svg>Dodaj planograme</button>
+      <p class="hint">PDF iz maila ili Teamsa možeš i podijeliti direktno u Policu.</p>
+    </div>
+  </div>
+
+  <div class="fab-dock" id="homeDock">
+    <button class="fab" id="scanBtn" type="button"><svg class="ico"><use href="#i-scan"/></svg>Skeniraj</button>
+  </div>
+</section>
+
+<!-- One article -->
+<section id="item" class="screen" aria-label="Artikal">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title" id="itemPlan"></span>
+    <button class="round-btn" type="button" id="itemViewer" aria-label="Otvori planogram"><svg class="ico"><use href="#i-expand"/></svg></button>
+  </header>
+  <div class="scroll" id="itemBody"></div>
+  <div class="fab-dock">
+    <button class="fab" type="button" data-scan><svg class="ico"><use href="#i-scan"/></svg>Skeniraj sljedeći</button>
+  </div>
+</section>
+
+<!-- Barcode that is not in any planogram -->
+<section id="missing" class="screen" aria-label="Nije pronađeno">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title"></span>
+  </header>
+  <div class="scroll" id="missingBody"></div>
+  <div class="fab-dock">
+    <button class="fab" type="button" data-scan><svg class="ico"><use href="#i-scan"/></svg>Skeniraj ponovo</button>
+  </div>
+</section>
+
+<!-- Planograms on the phone -->
+<section id="plans" class="screen" aria-label="Planogrami">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">Planogrami</span>
+  </header>
+  <div class="scroll" id="plansBody"></div>
+</section>
+
+<!-- Settings -->
+<section id="settings" class="screen" aria-label="Postavke">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">Postavke</span>
+  </header>
+  <div class="scroll" id="settingsBody"></div>
+</section>
+
+<!-- What changed when a planogram was replaced -->
+<section id="changes" class="screen" aria-label="Promjene">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title" id="changesTitle">Promjene</span>
+  </header>
+  <div class="scroll" id="changesBody"></div>
+</section>
+
+<!-- The planogram page, zoomable -->
+<section id="viewer" class="screen viewer" aria-label="Planogram">
+  <div class="stage" id="stage">
+    <canvas id="stageBase"></canvas>
+    <canvas id="stageDetail"></canvas>
+    <svg id="stageMark" aria-hidden="true"></svg>
+    <div class="stage-msg" id="stageMsg" hidden></div>
+  </div>
+  <header class="viewer-top">
+    <button class="glass-btn" type="button" data-back aria-label="Zatvori"><svg class="ico"><use href="#i-x"/></svg></button>
+    <span class="viewer-title" id="viewerTitle"></span>
+    <button class="glass-btn" type="button" id="viewerFit" aria-label="Cijela stranica"><svg class="ico"><use href="#i-fit"/></svg></button>
+  </header>
+  <footer class="viewer-pager">
+    <button class="glass-btn" id="pagePrev" type="button" aria-label="Prethodna stranica"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="page-pill" id="pageNo"></span>
+    <button class="glass-btn" id="pageNext" type="button" aria-label="Sljedeća stranica"><svg class="ico"><use href="#i-chev"/></svg></button>
+  </footer>
+</section>
+
+<!-- Bottom sheet for progress, results and questions -->
+<div class="sheet-scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <h2 id="sheetTitle"></h2>
+  <div id="sheetBody"></div>
+  <div class="sheet-actions" id="sheetActions"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
