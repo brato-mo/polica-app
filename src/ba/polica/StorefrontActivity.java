@@ -90,7 +90,7 @@ public class StorefrontActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        host = getString(R.string.storefront_host);
+        host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
         query = getIntent().getStringExtra(EXTRA_QUERY);
         mode = getIntent().getStringExtra(EXTRA_MODE);
         if (query == null || !SAFE_QUERY.matcher(query).matches()) {

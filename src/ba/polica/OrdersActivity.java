@@ -84,7 +84,7 @@ public class OrdersActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        host = getString(R.string.storefront_host);
+        host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
         target = "https://" + host + "/ui/legacy-customer-orders";
         try {
             JSONArray k = new JSONArray(getIntent().getStringExtra(EXTRA_KNOWN));

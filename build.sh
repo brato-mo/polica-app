@@ -15,7 +15,7 @@ rm -rf build && mkdir -p build/gen build/classes build/dex out
 echo "1/5 resources"
 # two values that are not part of the source: the address of the store system's web front (private file in
 # keystore/, never published) and the place the app looks for updates (update-repo.txt)
-HOSTNAME="$(tr -d ' \r\n' < keystore/host.txt)"
+HOSTNAME="$(tr -d ' \r\n' < keystore/host.txt | rev)"
 UPDATE_REPO="$(tr -d ' \r\n' < update-repo.txt)"
 mkdir -p build/res-gen/values
 cat > build/res-gen/values/config.xml <<XML
