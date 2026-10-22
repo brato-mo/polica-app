@@ -305,7 +305,7 @@ window.onStoreStatus = (on) => {
   e.className = 'onl ' + (on ? 'is-on' : 'is-off');
   e.textContent = on ? 'online' : 'offline';
 };
-setInterval(() => { if (!document.hidden && top().id === 'home') checkOnline(); }, 60000);
+setInterval(() => { if (!document.hidden && top().id === 'home') checkOnline(); }, 300000);
 
 window.onUpdate = (r) => {
   if (!r) return;

@@ -461,36 +461,85 @@ public class MainActivity extends Activity {
                 new ByteArrayInputStream(new byte[0]));
     }
 
+    private boolean probing;
+
+    /** Loads the customer-orders page in a 1-pixel hidden WebView: signed in = the page shows its tabs, signed out = it leaves for the sign-in page. */
+    private void probeStore() {
+        if (probing) return;
+        probing = true;
+        final String host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
+        final WebView w = new WebView(this);
+        WebSettings st = w.getSettings();
+        st.setJavaScriptEnabled(true);
+        st.setDomStorageEnabled(true);
+        st.setAllowFileAccess(false);
+        st.setAllowContentAccess(false);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
+        w.setAlpha(0f);
+        w.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                return !"https".equals(r.getUrl().getScheme());
+            }
+        });
+        ((android.view.ViewGroup) getWindow().getDecorView()).addView(w, new android.view.ViewGroup.LayoutParams(1, 1));
+        w.loadUrl("https://" + host + "/ui/legacy-customer-orders");
+        final long t0 = System.currentTimeMillis();
+        final boolean[] over = {false};
+        final Runnable[] tick = new Runnable[1];
+        tick[0] = new Runnable() {
+            @Override
+            public void run() {
+                if (over[0]) return;
+                String u = w.getUrl();
+                boolean away = false;
+                try {
+                    away = u != null && !host.equals(Uri.parse(u).getHost()) && w.getProgress() >= 100;
+                } catch (Exception ignored) {
+                }
+                if (away || System.currentTimeMillis() - t0 > 20000) {
+                    finish(false);
+                    return;
+                }
+                if (u != null && u.contains(host)) {
+                    w.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';return /(Aktivan|Ispunjen|Stigao|Zakasnio) \\(\\d+\\)/.test(t)})()", new android.webkit.ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String v) {
+                            if ("true".equals(v)) finish(true);
+                        }
+                    });
+                }
+                ui.postDelayed(tick[0], 700);
+            }
+
+            private void finish(boolean on) {
+                if (over[0]) return;
+                over[0] = true;
+                probing = false;
+                try {
+                    ((android.view.ViewGroup) w.getParent()).removeView(w);
+                    w.destroy();
+                } catch (Exception ignored) {
+                }
+                CookieManager.getInstance().flush();
+                runJs("window.onStoreStatus&&onStoreStatus(" + on + ")");
+            }
+        };
+        ui.postDelayed(tick[0], 1500);
+    }
+
     // ----------------------------------------------------------------- bridge
 
     /** Methods the page calls as window.Android.*. They run on a WebView binder thread. */
     public class Bridge {
-        /** Asks StoreFront, with the sign-in the app already has, whether it still lets the employee in. Answer: window.onStoreStatus(bool). */
+        /** Asks StoreFront, in a hidden page with the app's own sign-in, whether it still lets the employee in. Answer: window.onStoreStatus(bool). */
         @JavascriptInterface
         public void storeStatus() {
-            io.execute(new Runnable() {
+            ui.post(new Runnable() {
                 @Override
                 public void run() {
-                    boolean on = false;
-                    try {
-                        String host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
-                        String url = "https://" + host + "/ui/legacy-customer-orders";
-                        String ck = CookieManager.getInstance().getCookie(url);
-                        if (ck != null && ck.length() > 0) {
-                            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                            c.setInstanceFollowRedirects(false);
-                            c.setConnectTimeout(6000);
-                            c.setReadTimeout(8000);
-                            c.setRequestProperty("Cookie", ck);
-                            c.setRequestProperty("User-Agent", web.getSettings().getUserAgentString());
-                            int code = c.getResponseCode();
-                            on = code == 200;
-                            c.disconnect();
-                        }
-                    } catch (Exception e) {
-                        on = false;
-                    }
-                    runJs("window.onStoreStatus&&onStoreStatus(" + on + ")");
+                    probeStore();
                 }
             });
         }
