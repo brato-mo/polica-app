@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         applyBars();
         web = new WebView(this);
-        web.setBackgroundColor(isDark() ? 0xFF0E1014 : 0xFFF3F4F7);
+        web.setBackgroundColor(barsDark() ? 0xFF0E1014 : 0xFFF3F4F7);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -175,8 +175,14 @@ public class MainActivity extends Activity {
                 == Configuration.UI_MODE_NIGHT_YES;
     }
 
+    private int themePref = 0; // 0 = like the phone, 1 = light, 2 = dark
+
+    private boolean barsDark() {
+        return themePref == 2 || (themePref == 0 && isDark());
+    }
+
     private void applyBars() {
-        boolean dark = isDark();
+        boolean dark = barsDark();
         int bg = dark ? 0xFF0E1014 : 0xFFF3F4F7;
         Window w = getWindow();
         w.setStatusBarColor(bg);
@@ -459,6 +465,18 @@ public class MainActivity extends Activity {
 
     /** Methods the page calls as window.Android.*. They run on a WebView binder thread. */
     public class Bridge {
+        @JavascriptInterface
+        public void setTheme(final String t) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    themePref = "dark".equals(t) ? 2 : "light".equals(t) ? 1 : 0;
+                    applyBars();
+                    web.setBackgroundColor(barsDark() ? 0xFF0E1014 : 0xFFF3F4F7);
+                }
+            });
+        }
+
         @JavascriptInterface
         public boolean isDark() {
             return MainActivity.this.isDark();

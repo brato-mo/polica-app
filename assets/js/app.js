@@ -319,6 +319,7 @@ const DEFAULTS = {
   name: true, // show the customer's name
   phone: true, // show the customer's phone
   stale: 12, // hours after which the orders data is called old
+  theme: 'auto', // auto = follows the phone, or light / dark
   upd: true, // look for a new version of the app when it is opened
 };
 const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) } });
@@ -339,6 +340,10 @@ function renderSettings() {
   const learned = Object.keys(S.user.learned || {}).length;
   const tabNames = [['Aktivan', 'Aktivan'], ['Zakasnio', 'Zakasnio'], ['Stigao', 'Stigao'], ['Ispunjen', 'Ispunjen']];
   $('#settingsBody').innerHTML = `
+  <section class="set-block"><h3>Izgled</h3><div class="set-card">
+    ${choice('theme', 'Tema', [['auto', 'Kao telefon'], ['light', 'Svijetla'], ['dark', 'Tamna']], c.theme)}
+  </div></section>
+
   <section class="set-block"><h3>Pretraga i skeniranje</h3><div class="set-card">
     ${choice('mode', 'Pretraga pri otvaranju', [['plan', 'Planogrami'], ['orders', 'Narudžbe']], c.mode)}
     ${sw('vib', 'Vibracija pri skeniranju', 'Kratka vibracija kad se barkod pročita', c.vib)}
@@ -378,6 +383,7 @@ function onSettingsClick(t) {
   } else if (t.dataset.choice) {
     const k = t.dataset.choice;
     setCfg({ [k]: k === 'stale' ? +t.dataset.v : t.dataset.v });
+    if (k === 'theme') applyTheme();
   } else if (t.dataset.tab) {
     const tabs = { ...cfg().tabs, [t.dataset.tab]: !cfg().tabs[t.dataset.tab] };
     if (!Object.values(tabs).some(Boolean)) { toast('Bar jedna kartica mora biti uključena.'); return; }
@@ -1662,11 +1668,16 @@ window.appResume = () => {
   if (S.update && S.update.state === 'permission') { renderUpdate(); return; }
   if (!S.updChecked || Date.now() - S.updChecked > 3 * 3600 * 1000) checkUpdate(false);
 };
-window.themeChanged = (dark) => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; };
+const applyTheme = () => {
+  const t = cfg().theme;
+  try { A.setTheme(t); } catch (e) { /* older shell */ }
+  document.documentElement.dataset.theme = t === 'dark' ? 'dark' : t === 'light' ? 'light' : (A.isDark() ? 'dark' : 'light');
+};
+window.themeChanged = () => applyTheme();
 
 function boot() {
-  document.documentElement.dataset.theme = A.isDark() ? 'dark' : 'light';
   load();
+  applyTheme();
   S.mode = cfg().mode === 'orders' ? 'orders' : 'plan';
   bind();
   renderHome();

@@ -1,7 +1,7 @@
 {
- "code": 13,
- "name": "1.12",
- "notes": "Prva verzija s automatskim ažuriranjem",
+ "code": 14,
+ "name": "1.13",
+ "notes": "Izbor teme: svijetla, tamna ili kao telefon",
  "size": 1855465,
- "sha256": "8af3ead8c80880904c6176cda3d56dda51f63da64b55d1d083b6a6292c50b5fd"
+ "sha256": "887b8fabf9e077daf45d6762e63333b5d338f5f947f9226f929d74c44e6a4a4f"
 }
