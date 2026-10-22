@@ -1,7 +1,7 @@
 {
- "code": 14,
- "name": "1.13",
- "notes": "Izbor teme: svijetla, tamna ili kao telefon",
+ "code": 15,
+ "name": "1.14",
+ "notes": "Online/offline oznaka StoreFronta, broj narudžbi u modu Narudžbe",
  "size": 1855465,
- "sha256": "887b8fabf9e077daf45d6762e63333b5d338f5f947f9226f929d74c44e6a4a4f"
+ "sha256": "62760d383f86ee238264275a89185a8111dd231c74955ba0045e52bf2816f4e7"
 }

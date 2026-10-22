@@ -465,6 +465,36 @@ public class MainActivity extends Activity {
 
     /** Methods the page calls as window.Android.*. They run on a WebView binder thread. */
     public class Bridge {
+        /** Asks StoreFront, with the sign-in the app already has, whether it still lets the employee in. Answer: window.onStoreStatus(bool). */
+        @JavascriptInterface
+        public void storeStatus() {
+            io.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean on = false;
+                    try {
+                        String host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
+                        String url = "https://" + host + "/ui/legacy-customer-orders";
+                        String ck = CookieManager.getInstance().getCookie(url);
+                        if (ck != null && ck.length() > 0) {
+                            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                            c.setInstanceFollowRedirects(false);
+                            c.setConnectTimeout(6000);
+                            c.setReadTimeout(8000);
+                            c.setRequestProperty("Cookie", ck);
+                            c.setRequestProperty("User-Agent", web.getSettings().getUserAgentString());
+                            int code = c.getResponseCode();
+                            on = code == 200;
+                            c.disconnect();
+                        }
+                    } catch (Exception e) {
+                        on = false;
+                    }
+                    runJs("window.onStoreStatus&&onStoreStatus(" + on + ")");
+                }
+            });
+        }
+
         @JavascriptInterface
         public void setTheme(final String t) {
             ui.post(new Runnable() {

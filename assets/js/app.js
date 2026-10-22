@@ -295,6 +295,18 @@ function installUpdate() {
   renderUpdate();
 }
 
+function checkOnline() {
+  try { if (A.storeStatus) A.storeStatus(); } catch (e) { /* ignore */ }
+}
+window.onStoreStatus = (on) => {
+  const e = $('#onl');
+  if (!e) return;
+  e.hidden = false;
+  e.className = 'onl ' + (on ? 'is-on' : 'is-off');
+  e.textContent = on ? 'online' : 'offline';
+};
+setInterval(() => { if (!document.hidden && top().id === 'home') checkOnline(); }, 60000);
+
 window.onUpdate = (r) => {
   if (!r) return;
   if (r.state === 'none') {
@@ -526,9 +538,12 @@ function renderHome() {
   $('#planCount').textContent = String(S.plans.length);
   $('#planCount').hidden = !has;
   const count = S.index.names.length;
-  $('#homeStats').textContent = has
-    ? `${artikala(count)} u ${S.plans.length} ${plural(S.plans.length, 'planogramu', 'planograma', 'planograma')}`
-    : 'Tvoji planogrami, uvijek pri ruci';
+  const ol = S.user.orders && S.user.orders.list;
+  $('#homeStats').textContent = has && S.mode === 'orders'
+    ? (ol ? `${ol.length} ${plural(ol.length, 'narudžba', 'narudžbe', 'narudžbi')} kupaca` : 'Narudžbe još nisu učitane')
+    : has
+      ? `${artikala(count)} u ${S.plans.length} ${plural(S.plans.length, 'planogramu', 'planograma', 'planograma')}`
+      : 'Tvoji planogrami, uvijek pri ruci';
   $('#welcome').hidden = has;
   $('#searchForm').hidden = !has;
   $('#homeDock').hidden = !has;
@@ -951,11 +966,13 @@ function handleCode(code) {
 }
 
 window.onStorefront = (r) => {
+  checkOnline();
   const t = top();
   if (r && t.id === 'missing' && r.query === t.state && S.storeCb) S.storeCb(r);
 };
 
 window.onOrders = (r) => {
+  checkOnline();
   if (!r || r.how === 'cancelled' || !Array.isArray(r.orders)) return;
   const prevList = (S.user.orders && S.user.orders.list) || [];
   const prev = new Map(prevList.map((x) => [x.no, x]));
@@ -1666,6 +1683,7 @@ function bind() {
 window.appResume = () => {
   // back from another app (e.g. the install permission screen) or after a while: look for updates, at most every 3 h
   if (S.update && S.update.state === 'permission') { renderUpdate(); return; }
+  checkOnline();
   if (!S.updChecked || Date.now() - S.updChecked > 3 * 3600 * 1000) checkUpdate(false);
 };
 const applyTheme = () => {
@@ -1680,6 +1698,7 @@ function boot() {
   applyTheme();
   S.mode = cfg().mode === 'orders' ? 'orders' : 'plan';
   bind();
+  checkOnline();
   renderHome();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);

@@ -963,3 +963,10 @@ svg { display: block; }
 .update-bar .go { margin-left: auto; flex: none; padding: 6px 12px; border-radius: 99px; background: rgba(255, 255, 255, 0.2); font-size: 13.5px; font-weight: 800; }
 .update-bar .ico { width: 22px; height: 22px; flex: none; }
 .update-bar .work-dot { width: 18px; height: 18px; border-radius: 9px; border: 3px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; animation: spin 0.9s linear infinite; flex: none; }
+
+.onl { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0; vertical-align: middle; }
+.onl::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.onl.is-on { color: #1f9d55; }
+.onl.is-off { color: #d93a2f; }
+:root[data-theme="dark"] .onl.is-on { color: #4fd68a; }
+:root[data-theme="dark"] .onl.is-off { color: #ff7b72; }
