@@ -1,7 +1,7 @@
 {
- "code": 22,
- "name": "1.21",
- "notes": "Lista za rasprodaju sakriva božićne i novogodišnje artikle (može se isključiti u postavkama)",
+ "code": 23,
+ "name": "1.22",
+ "notes": "Planogrami se otvaraju dodirom, a na kartici odjela piše koji artikli imaju status 21 i 81 na zalihi. Artikli bez zalihe se ne prikazuju",
  "size": 1876017,
- "sha256": "89ae8de535e50fbe32a073d1e79717c3572f6cd683ff2241b032578bcc4e8661"
+ "sha256": "7f8ca46462f0f801a080c17a456058686451c77a7d5fb8c4f372171a4116d75e"
 }

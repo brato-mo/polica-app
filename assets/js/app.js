@@ -19,6 +19,7 @@ const S = {
   tried: new Set(), // barcodes already asked in StoreFront this session
   storeCb: null,
   mode: 'plan', // home search: 'plan' (planograms) or 'orders' (customer orders)
+  planMore: new Set(), // "<plan id>|<status>": cards whose whole row of article numbers is open on the Planogrami screen
 };
 
 // ------------------------------------------------------------------ helpers
@@ -354,18 +355,20 @@ function openClearance() {
 }
 
 /**
- * The stored list as it is shown: Christmas and New Year articles (a name with one of the words in the settings)
- * are left out, unless the setting is off or the screen was asked to show them for now. `xmas` counts them,
- * `flag` says which ones they are.
+ * The stored list as it is shown. What matters is selling the articles off, so an article with nothing in stock never
+ * shows (StoreFront is asked for articles in stock, but this does not depend on it). Christmas and New Year articles
+ * (a name with one of the words in the settings) are left out too, unless the setting is off or the screen was asked
+ * to show them for now (`peek`; the list screen's own switch, other screens pass false). `xmas` counts them, `flag`
+ * says which ones they are.
  */
-function clrView() {
+function clrView(peek = S.clr.peek) {
   const c = S.user.clear;
-  const all = c && c.list ? c.list : [];
+  const all = (c && c.list ? c.list : []).filter(core.inStock);
   const test = cfg().noxmas ? core.wordMatcher(cfg().xmas) : null;
   if (!test) return { list: all, xs: [], xmas: 0, flag: () => false };
   const xs = all.filter((x) => test(x.name));
   const hit = new Set(xs.map((x) => x.num));
-  return { list: S.clr.peek ? all : all.filter((x) => !hit.has(x.num)), xs, xmas: xs.length, flag: (x) => hit.has(x.num) };
+  return { list: peek ? all : all.filter((x) => !hit.has(x.num)), xs, xmas: xs.length, flag: (x) => hit.has(x.num) };
 }
 
 function renderClearBar() {
@@ -523,8 +526,10 @@ window.onClearance = (r) => {
   S.user.clear = { at: r.at || Date.now(), st: want, group: r.group || cfg().group, list, limited, short };
   saveUser();
   const partial = r.how !== 'ok' || limited.length || short.length;
-  toast(partial ? 'Lista je učitana samo djelimično.' : `Učitano: ${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}`);
+  const shown = clrView(false).list.length; // what the list will show: only the ones in stock, without Christmas
+  toast(partial ? 'Lista je učitana samo djelimično.' : `Učitano: ${shown} ${plural(shown, 'artikal', 'artikla', 'artikala')}`);
   if (top().id === 'clearance') renderClearance();
+  if (top().id === 'plans') renderPlans();
   renderClearBar();
 };
 
@@ -1579,6 +1584,55 @@ async function refreshOld() {
 
 // -------------------------------------------------------------- planograms
 
+/** Article numbers written out on one card for a status before "+N još". */
+const PLAN_CODES = 24;
+
+/** The first page of the planogram that belongs to a section (the chip's section), or the first page. */
+function sectionPage(p, s) {
+  const secs = (p.plan && p.plan.meta && p.plan.meta.sections) || [];
+  const pages = (p.plan && p.plan.pages) || [];
+  const i = pages.findIndex((pg) => pg.sec >= 0 && secs[pg.sec] && secs[pg.sec].code === s.code && secs[pg.sec].name === s.name);
+  return i < 0 ? 0 : i;
+}
+
+/**
+ * The list of articles to sell out as the small print of a planogram card: how many have status 21 / 81 (and are in
+ * stock), and which. It is the department's list, the same numbers as on the list screen: such an article is often
+ * not on the planogram at all (it comes off the shelf when a new planogram arrives), so the planogram's own articles
+ * would be the wrong count. `view` is clrView(false): Christmas / New Year articles stay hidden here as everywhere.
+ * null = no list for this planogram: it is read for one product group only, the department's own.
+ */
+function planClear(p, view) {
+  const c = S.user.clear;
+  const dept = p.plan && p.plan.meta && p.plan.meta.dept ? parseInt(p.plan.meta.dept.code, 10) : NaN;
+  if (dept !== parseInt((c && c.group) || cfg().group, 10)) return null;
+  if (!c || !c.list) return { wait: true };
+  return { c, by: c.st.map((st) => ({ st, rows: view.list.filter((x) => x.st === st).sort((a, b) => a.num.localeCompare(b.num)) })) };
+}
+
+/** The small print under a planogram's name: "5 artikala sa statusom 21 na zalihi", then their numbers. */
+function planClearHtml(p, view) {
+  const r = planClear(p, view);
+  if (!r) return '';
+  if (r.wait) {
+    return `<div class="plan-st"><p class="plan-st-src">Artikli sa statusom ${clrStatuses().join(' i ')} još nisu učitani · <button class="code-more" type="button" data-open-clear="1">Učitaj</button></p></div>`;
+  }
+  const lines = r.by.filter((g) => g.rows.length).map((g) => {
+    const key = `${p.id}|${g.st}`;
+    const open = S.planMore.has(key);
+    const shown = open ? g.rows : g.rows.slice(0, PLAN_CODES);
+    const rest = g.rows.length - shown.length;
+    const more = rest > 0 ? `+${rest} još` : open && g.rows.length > PLAN_CODES ? 'Manje' : '';
+    return `<div class="plan-st-line is-st${esc(g.st)}">
+      <p class="plan-st-n"><b>${g.rows.length}</b> ${plural(g.rows.length, 'artikal', 'artikla', 'artikala')} sa statusom ${esc(g.st)} na zalihi</p>
+      <div class="plan-codes">${shown.map((x) => `<button class="code-link" type="button" data-store="${esc(x.num)}">${esc(x.num)}</button>`).join('')}${more ? `<button class="code-more" type="button" data-codes-more="${esc(key)}">${more}</button>` : ''}</div>
+    </div>`;
+  });
+  const none = lines.length ? '' : `<p class="plan-st-none">Nema artikala sa statusom ${esc(r.c.st.join(' ni '))} na zalihi</p>`;
+  const partial = (r.c.limited || []).length || (r.c.short || []).length ? ' · lista nije cijela' : '';
+  return `<div class="plan-st">${lines.join('')}${none}<p class="plan-st-src">Iz liste za rasprodaju · ${esc(ageText(r.c.at))}${partial} · <button class="code-more" type="button" data-open-clear="1">Otvori listu</button></p></div>`;
+}
+
 function renderPlans() {
   const body = $('#plansBody');
   let h = `<div class="plans-top">
@@ -1587,16 +1641,20 @@ function renderPlans() {
   </div>`;
   if (!S.plans.length) h += '<p class="empty">Još nema planograma.</p>';
   const sorted = S.plans.slice().sort((a, b) => a.title.localeCompare(b.title, 'bs'));
+  const view = clrView(false);
   for (const p of sorted) {
     const ch = S.user.changes[p.id];
     const chN = ch ? ch.added.length + ch.removed.length + ch.moved.length : 0;
     const code = /^(\d{2})\b/.exec(p.title);
+    const name = p.title.replace(/^\d{2}\s+/, '');
     h += `<article class="plan">
-      <div class="plan-head">
+      <h3 class="plan-h"><button class="plan-head" type="button" data-open-plan="${esc(p.id)}" data-page="0" aria-label="Otvori planogram ${esc(name)}">
         <span class="plan-tile">${esc(code ? code[1] : p.title.slice(0, 2))}</span>
-        <div><h3>${esc(p.title.replace(/^\d{2}\s+/, ''))}</h3>${p.deadline ? `<p class="plan-due">Rok za postavku: ${esc(core.deadlineLabel(p.deadline))}</p>` : ''}</div>
-      </div>
-      <div class="secs">${p.sections.map((s) => `<span class="sec"><b>${esc(s.code)}</b>${esc(s.name)}</span>`).join('')}</div>
+        <span class="plan-ttl"><span class="plan-name">${esc(name)}</span>${p.deadline ? `<span class="plan-due">Rok za postavku: ${esc(core.deadlineLabel(p.deadline))}</span>` : ''}</span>
+        ${icon('chev', 'chev')}
+      </button></h3>
+      ${planClearHtml(p, view)}
+      <div class="secs">${p.sections.map((s) => `<button class="sec" type="button" data-open-plan="${esc(p.id)}" data-page="${sectionPage(p, s)}"><b>${esc(s.code)}</b>${esc(s.name)}</button>`).join('')}</div>
       <div class="stats">
         <div class="stat"><b>${p.count}</b><span>${plural(p.count, 'artikal', 'artikla', 'artikala')}</span></div>
         <div class="stat"><b>${p.pictures || 0}</b><span>sa slikom</span></div>
@@ -1926,9 +1984,16 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
+    if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
+    if (t.dataset.openClear) { openClearance(); return; }
+    if (t.dataset.codesMore) {
+      if (!S.planMore.delete(t.dataset.codesMore)) S.planMore.add(t.dataset.codesMore);
+      renderPlans();
+      return;
+    }
     if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }

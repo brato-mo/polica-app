@@ -1288,6 +1288,12 @@ export function wordMatcher(words) {
   return (name) => rx.test(fold(name));
 }
 
+/**
+ * Is there anything of this article in the store? Rows of the sale-out list are only worth showing with stock: an
+ * article with 0 (or less) on hand cannot be sold off, whatever its status says.
+ */
+export const inStock = (x) => !!x && Number(x.stock) > 0;
+
 /** "dd-mm-yyyy" as a number that sorts by date (0 when it is not a date). */
 export function dateKey(s) {
   const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || ''));
