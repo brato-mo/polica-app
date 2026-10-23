@@ -395,6 +395,7 @@ function renderSettings() {
 
   <section class="set-block"><h3>O aplikaciji</h3><div class="set-card">
     <div class="set-row"><div class="set-txt"><b>@APP@</b><small>Verzija ${esc(A.version())} · ${esc(A.device())}</small></div></div>
+    ${S.crash ? `<div class="set-row set-col"><div class="set-txt"><b>Zadnja greška</b><small class="crash">${esc(S.crash.slice(0, 700))}</small></div></div>${act('crash-clear', 'Obriši zapis o grešci', '')}` : ''}
     ${sw('upd', 'Provjeri nove verzije pri otvaranju', 'Nova verzija se sama preuzme, a ti samo potvrdiš instalaciju', c.upd)}
     ${S.update && S.update.state === 'ready' ? act('upd-install', `Instaliraj verziju ${esc(S.update.name || '')}`, 'Spremna je za instalaciju')
       : S.update && S.update.state === 'downloading' ? `<div class="set-row"><div class="set-txt"><b>Preuzimam ${esc(S.update.name || '')}</b><small>${S.update.pct || 0}%</small></div></div>`
@@ -406,7 +407,7 @@ function onSettingsClick(t) {
   if (t.dataset.set) {
     const k = t.dataset.set;
     setCfg({ [k]: !cfg()[k] });
-    if (k === 'watch') syncWatch();
+    if (k === 'watch') syncWatch(true);
   } else if (t.dataset.choice) {
     const k = t.dataset.choice;
     setCfg({ [k]: k === 'stale' ? +t.dataset.v : t.dataset.v });
@@ -419,6 +420,7 @@ function onSettingsClick(t) {
     const a = t.dataset.act;
     if (a === 'plans') { renderPlans(); go('plans'); return; }
     if (a === 'orders-refresh') { refreshOrders(); return; }
+    if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
     if (a === 'upd-check') { checkUpdate(true); toast('Tražim novu verziju…'); return; }
     if (a === 'upd-install') { installUpdate(); return; }
     if (a === 'orders-clear') { S.user.orders = null; saveUser(); toast('Narudžbe su obrisane s telefona.'); }
@@ -523,7 +525,7 @@ const baseCounts = () => {
   const t = cfg().tabs;
   return TABS_ALL.filter((k) => t[k]).map((k) => `${k}:${o.list.filter((x) => x.tab === k).length}`).join(',');
 };
-const syncWatch = () => { try { if (A.watch) A.watch(!!cfg().watch, baseCounts()); } catch (e) { /* ignore */ } };
+const syncWatch = (ask) => { try { if (A.watch) A.watch(!!cfg().watch, baseCounts(), !!ask); } catch (e) { /* ignore */ } };
 // what StoreFront shows now against what was read: [['Aktivan', +3], ...]
 function siteDiff() {
   const o = S.user.orders;
@@ -1739,6 +1741,16 @@ function boot() {
   S.mode = cfg().mode === 'orders' ? 'orders' : 'plan';
   bind();
   checkOnline();
+  // the app stopped working last time: write down which crash it was, switch the background look off once, and show the cause in the settings
+  try { S.crash = (A.lastCrash && A.lastCrash()) || ''; } catch (e) { S.crash = ''; }
+  if (S.crash) {
+    const stamp = S.crash.split('\n')[0];
+    if (S.user.crashSeen !== stamp) {
+      S.user.crashSeen = stamp;
+      if (cfg().watch) setCfg({ watch: false }); else saveUser();
+      setTimeout(() => toast('Aplikacija je prošli put prestala raditi. Pozadinska provjera je isključena.'), 1200);
+    }
+  }
   syncWatch();
   renderHome();
   setTimeout(() => checkUpdate(false), 1500);

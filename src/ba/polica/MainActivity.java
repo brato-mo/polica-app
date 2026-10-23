@@ -494,17 +494,48 @@ public class MainActivity extends Activity {
 
         /** Background look at the order numbers: on/off, and the numbers of the last full read. */
         @JavascriptInterface
-        public void watch(final boolean on, final String base) {
+        public void watch(final boolean on, final String base, final boolean ask) {
             ui.post(new Runnable() {
                 @Override
                 public void run() {
-                    if (on && Build.VERSION.SDK_INT >= 33
-                        && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
+                    try {
+                        if (ask && on && Build.VERSION.SDK_INT >= 33
+                            && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
+                        }
+                        OrderWatch.set(MainActivity.this, on, base);
+                    } catch (Throwable e) {
+                        Log.w(TAG, "watch: " + e);
                     }
-                    OrderWatch.set(MainActivity.this, on, base);
                 }
             });
+        }
+
+        /** The last crash of the app (stack trace), or an empty string. */
+        @JavascriptInterface
+        public String lastCrash() {
+            try {
+                java.io.File f = App.crashFile(MainActivity.this);
+                if (!f.isFile()) return "";
+                java.io.FileInputStream in = new java.io.FileInputStream(f);
+                try {
+                    byte[] b = new byte[(int) Math.min(f.length(), 4000)];
+                    int n = in.read(b);
+                    return n > 0 ? new String(b, 0, n, "UTF-8") : "";
+                } finally {
+                    in.close();
+                }
+            } catch (Throwable e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public void clearCrash() {
+            try {
+                App.crashFile(MainActivity.this).delete();
+            } catch (Throwable ignored) {
+            }
         }
 
         @JavascriptInterface

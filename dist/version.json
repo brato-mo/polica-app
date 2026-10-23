@@ -1,7 +1,7 @@
 {
- "code": 18,
- "name": "1.17",
- "notes": "Novo ime aplikacije",
+ "code": 19,
+ "name": "1.18",
+ "notes": "Ispravljen pad aplikacije pri uključivanju obavijesti o narudžbama",
  "size": 1859561,
- "sha256": "1aa584222c878f1972ce2f3bacc4e1796504eee670f5b2041da487a886cf22c1"
+ "sha256": "6b90a89583f1fd52c63adccd297d1ed69baa6a070df0e178e415567e292595c0"
 }

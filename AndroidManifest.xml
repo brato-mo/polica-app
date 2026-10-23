@@ -13,11 +13,14 @@
 
     <!-- Background look at the order numbers: a notification, and the schedule survives a restart. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- A scheduled job that needs the network must hold this since Android 14. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
+        android:name=".App"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"

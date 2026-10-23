@@ -972,3 +972,5 @@ svg { display: block; }
 .onl.is-off { color: #d93a2f; }
 :root[data-theme="dark"] .onl.is-on { color: #4fd68a; }
 :root[data-theme="dark"] .onl.is-off { color: #ff7b72; }
+
+.set-txt small.crash { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 9em; overflow: auto; display: block; }

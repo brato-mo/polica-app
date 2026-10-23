@@ -26,6 +26,14 @@ final class StoreProbe {
     }
 
     static void run(Context ctx, final ViewGroup parent, final Callback cb) {
+        try {
+            run0(ctx, parent, cb);
+        } catch (Throwable e) {
+            cb.done(false, "");
+        }
+    }
+
+    private static void run0(Context ctx, final ViewGroup parent, final Callback cb) {
         final Handler ui = new Handler(Looper.getMainLooper());
         final String host = new StringBuilder(ctx.getString(R.string.storefront_host)).reverse().toString();
         final WebView w = new WebView(ctx.getApplicationContext());

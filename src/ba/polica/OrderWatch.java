@@ -41,11 +41,21 @@ public class OrderWatch extends JobService {
             return;
         }
         for (JobInfo j : js.getAllPendingJobs()) if (j.getId() == JOB_ID) return;
-        js.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(c, OrderWatch.class))
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPeriodic(30 * 60 * 1000L)
-            .setPersisted(true)
-            .build());
+        try {
+            js.schedule(job(c, true));
+        } catch (RuntimeException e) {
+            // the system refused the first form (a missing permission, say): try the plainest one, and never crash for it
+            try {
+                js.schedule(job(c, false));
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static JobInfo job(Context c, boolean full) {
+        JobInfo.Builder b = new JobInfo.Builder(JOB_ID, new ComponentName(c, OrderWatch.class)).setPeriodic(30 * 60 * 1000L);
+        if (full) b.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(true);
+        return b.build();
     }
 
     static Map<String, Integer> parse(String s) {
@@ -70,18 +80,22 @@ public class OrderWatch extends JobService {
         int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
         if (!sp.getBoolean("on", false) || sp.getString("base", "").isEmpty() || h < 7 || h >= 21) return false;
         over = false;
-        StoreProbe.run(this, null, new StoreProbe.Callback() {
-            @Override
-            public void done(boolean online, String counts) {
-                if (over) return;
-                over = true;
-                try {
-                    if (online) compare(sp, counts);
-                } catch (Exception ignored) {
+        try {
+            StoreProbe.run(this, null, new StoreProbe.Callback() {
+                @Override
+                public void done(boolean online, String counts) {
+                    if (over) return;
+                    over = true;
+                    try {
+                        if (online) compare(sp, counts);
+                    } catch (Throwable ignored) {
+                    }
+                    jobFinished(p, false);
                 }
-                jobFinished(p, false);
-            }
-        });
+            });
+        } catch (Throwable e) {
+            return false;
+        }
         return true;
     }
 
