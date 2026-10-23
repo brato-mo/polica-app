@@ -334,7 +334,7 @@ window.onUpdate = (r) => {
 // ----------------------------------------------- articles to sell out (status 21 / 81)
 
 const CLR_ST = ['21', '81'];
-S.clr = { st: 'all', sort: 'stock', q: '' };
+S.clr = { st: 'all', sort: 'stock', q: '', peek: false }; // peek: show the Christmas / New Year articles for now
 const clrStatuses = () => CLR_ST.filter((k) => cfg().clr[k]);
 const whole = (n) => { try { return Math.round(n).toLocaleString('de-DE'); } catch (e) { return String(Math.round(n)); } };
 const money = (n) => { try { return Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (e) { return Number(n).toFixed(2); } };
@@ -353,6 +353,21 @@ function openClearance() {
   if (!(S.user.clear && S.user.clear.list)) refreshClearance();
 }
 
+/**
+ * The stored list as it is shown: Christmas and New Year articles (a name with one of the words in the settings)
+ * are left out, unless the setting is off or the screen was asked to show them for now. `xmas` counts them,
+ * `flag` says which ones they are.
+ */
+function clrView() {
+  const c = S.user.clear;
+  const all = c && c.list ? c.list : [];
+  const test = cfg().noxmas ? core.wordMatcher(cfg().xmas) : null;
+  if (!test) return { list: all, xs: [], xmas: 0, flag: () => false };
+  const xs = all.filter((x) => test(x.name));
+  const hit = new Set(xs.map((x) => x.num));
+  return { list: S.clr.peek ? all : all.filter((x) => !hit.has(x.num)), xs, xmas: xs.length, flag: (x) => hit.has(x.num) };
+}
+
 function renderClearBar() {
   const b = $('#clearBar');
   if (!b) return;
@@ -365,15 +380,16 @@ function renderClearBar() {
     b.innerHTML = `${ic}<span><b>Artikli za rasprodaju</b><small>Status ${clrStatuses().join(' i ')} sa zalihom, iz StoreFronta</small></span><span class="go">Učitaj</span>`;
     return;
   }
-  const n = (s) => c.list.filter((x) => x.st === s).length;
-  b.innerHTML = `${ic}<span><b>Za rasprodaju: ${c.list.length}</b><small>${c.st.map((k) => `Status ${k}: ${n(k)}`).join(' · ')} · ${esc(ageText(c.at))}</small></span><span class="go">Otvori</span>`;
+  const v = clrView();
+  const n = (s) => v.list.filter((x) => x.st === s).length;
+  b.innerHTML = `${ic}<span><b>Za rasprodaju: ${v.list.length}</b><small>${c.st.map((k) => `Status ${k}: ${n(k)}`).join(' · ')} · ${esc(ageText(c.at))}</small></span><span class="go">Otvori</span>`;
 }
 
 function clrFiltered() {
   const c = S.user.clear;
   if (!c || !c.list) return [];
   const toks = norm(S.clr.q).split(/\s+/).filter(Boolean);
-  let list = c.list.filter((x) => S.clr.st === 'all' || x.st === S.clr.st);
+  let list = clrView().list.filter((x) => S.clr.st === 'all' || x.st === S.clr.st);
   if (toks.length) {
     list = list.filter((x) => {
       const hay = norm(`${x.num} ${x.name}`);
@@ -386,14 +402,14 @@ function clrFiltered() {
   return list;
 }
 
-function clrRow(x) {
+function clrRow(x, xm) {
   const cut = x.reg != null && x.price != null && x.reg > x.price;
   const free = x.free !== x.stock ? ` (slobodno ${whole(x.free)})` : '';
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.dd && !x.dd.endsWith('-9998') ? `DD ${dmy(x.dd)}` : ''].filter(Boolean).join(' · ');
   return `<button class="item clr-item" type="button" data-store="${esc(x.num)}">
     ${thumb(x.num)}
     <span class="item-main">
-      <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span></span>
+      <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
       <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
       <span class="clr-line"><b>${whole(x.stock)} ${esc(x.unit || 'KOM')}</b> na zalihi${free}${x.price != null ? ` · ${money(x.price)} KM` : ''}${cut ? ` <s>${money(x.reg)}</s>` : ''}</span>
       ${meta ? `<span class="clr-sub">${esc(meta)}</span>` : ''}
@@ -405,10 +421,16 @@ function clrRow(x) {
 function renderClearList() {
   const c = S.user.clear;
   if (!c || !$('#clrList')) return;
+  const v = clrView();
   const list = clrFiltered();
   const value = list.reduce((s, x) => s + (x.price || 0) * x.stock, 0);
-  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}</small>`;
-  $('#clrList').innerHTML = list.length ? `<div class="list">${list.map(clrRow).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
+  const usual = cfg().xmas === core.XMAS_WORDS; // with the words of the settings changed the name "Christmas" would not be true
+  const here = v.xs.filter((x) => S.clr.st === 'all' || x.st === S.clr.st).length; // in the status that is open
+  const xm = here || (S.clr.peek && v.xmas) ? `<button class="clr-xmas" type="button" data-clr-xmas="1">${S.clr.peek
+    ? `Prikazani su i ${usual ? 'božićni i novogodišnji' : 'sakriveni po riječima iz postavki'}${here ? `: ${here}` : ''} · Sakrij`
+    : `Sakriveno ${usual ? 'božićnih i novogodišnjih' : 'po riječima iz postavki'}: ${here} · Prikaži`}</button>` : '';
+  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}</small>${xm}`;
+  $('#clrList').innerHTML = list.length ? `<div class="list">${list.map((x) => clrRow(x, S.clr.peek && v.flag(x))).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
   const lim = (c.limited || []);
   const notes = [];
   if (lim.length) notes.push(`StoreFront kaže da za status ${lim.join(' i ')} ima previše rezultata, pa taj dio liste nije učitan.`);
@@ -451,9 +473,10 @@ function renderClearance() {
       <p class="hint">Čitaju se artikli sa statusom ${clrStatuses().join(' i ')} koji su na zalihi u grupi Kućanstvo.</p>${clrDetails(failed)}`;
     return;
   }
-  const n = (s) => c.list.filter((x) => x.st === s).length;
+  const v = clrView();
+  const n = (s) => v.list.filter((x) => x.st === s).length;
   if (S.clr.st !== 'all' && !c.st.includes(S.clr.st)) S.clr.st = 'all';
-  const sts = [['all', `Svi (${c.list.length})`], ...c.st.map((k) => [k, `${k} (${n(k)})`])];
+  const sts = [['all', `Svi (${v.list.length})`], ...c.st.map((k) => [k, `${k} (${n(k)})`])];
   const sorts = [['stock', 'Zaliha'], ['value', 'Vrijednost'], ['new', 'Novi status']];
   body.innerHTML = `<div class="clr-sum" id="clrSum"></div>
     <div class="clr-tools">
@@ -520,6 +543,8 @@ const DEFAULTS = {
   watch: false, // look at the order numbers in the background and send a notification
   clr: { 21: true, 81: true }, // statuses on the list of articles to sell
   group: '5', // product group of that list (5 = the department's own)
+  noxmas: true, // leave Christmas and New Year articles out of that list
+  xmas: core.XMAS_WORDS, // the words that make a name a Christmas / New Year one
   upd: true, // look for a new version of the app when it is opened
 };
 const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) }, clr: { ...DEFAULTS.clr, ...((S.user.settings || {}).clr || {}) } });
@@ -565,7 +590,10 @@ function renderSettings() {
   <section class="set-block"><h3>Za rasprodaju</h3><div class="set-card">
     <div class="set-row set-col"><div class="set-txt"><b>Koji statusi</b><small>Artikli s ovim statusom koji su na zalihi u prodavnici (grupa Kućanstvo)</small></div>
       <div class="chips">${CLR_ST.map((k) => `<button class="chip" type="button" role="checkbox" aria-checked="${c.clr[k]}" data-cst="${k}">Status ${k}</button>`).join('')}</div></div>
-    ${act('clear-refresh', 'Učitaj listu sada', S.user.clear && S.user.clear.list ? `${S.user.clear.list.length} artikala, ${esc(ageText(S.user.clear.at))}` : 'Još nije učitana')}
+    ${sw('noxmas', 'Sakrij božićne i novogodišnje artikle', 'Ne prikazuju se artikli kojima u nazivu piše neka od riječi ispod. Lista ih i dalje čita, pa se mogu vratiti.', c.noxmas)}
+    ${c.noxmas ? `<div class="set-row set-col"><div class="set-txt"><b>Riječi za sakrivanje</b><small>Odvoji zarezom. Veliko ili malo slovo i č, ć, š, ž, đ nisu bitni, a riječ se traži na početku riječi u nazivu.</small></div>
+      <input class="set-input" id="xmasWords" type="text" value="${esc(c.xmas)}" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Riječi za sakrivanje"></div>` : ''}
+    ${act('clear-refresh', 'Učitaj listu sada', S.user.clear && S.user.clear.list ? `${clrView().list.length} artikala, ${esc(ageText(S.user.clear.at))}` : 'Još nije učitana')}
     ${act('clear-clear', 'Obriši listu s telefona', '', true)}
   </div></section>
 
@@ -1885,15 +1913,27 @@ function bind() {
   });
   $('#clearQ').addEventListener('click', () => { q.value = ''; runSearch(); q.focus(); });
 
+  // the words that hide Christmas / New Year articles: saved when the field is left; nothing typed brings back the usual ones
+  document.addEventListener('change', (ev) => {
+    const t = ev.target;
+    if (!t || t.id !== 'xmasWords') return;
+    const words = String(t.value || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    setCfg({ xmas: words || core.XMAS_WORDS });
+    renderSettings();
+    renderHome();
+    toast(words ? 'Riječi su spremljene.' : 'Vraćene su zadane riječi.');
+  });
+
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
     if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
+    if (t.dataset.clrXmas) { S.clr.peek = !S.clr.peek; renderClearance(); return; }
     if (t.id === 'updateBar') { installUpdate(); return; }
     if (t.dataset.mode) { setMode(t.dataset.mode); return; }
     if (t.dataset.oq) { $('#q').value = t.dataset.oq; runOrdersSearch(); return; }

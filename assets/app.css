@@ -989,6 +989,11 @@ svg { display: block; }
 .pill-st81 { background: #ffd9d4; color: #8a1d12; }
 :root[data-theme="dark"] .pill-st21 { background: #3a2d0f; color: #ffd98a; }
 :root[data-theme="dark"] .pill-st81 { background: #3a1d1c; color: #ffb4a8; }
+.pill-xmas { background: #dff3e4; color: #1d6b34; }
+:root[data-theme="dark"] .pill-xmas { background: #14301c; color: #8fe0a8; }
+.clr-xmas { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: 13px; font-weight: 700; text-align: left; }
+.set-input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; }
+.set-input:focus { outline: none; border-color: var(--primary); }
 .clr-line { font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .clr-line s { color: var(--ink-3); font-weight: 500; margin-left: 2px; }
 .clr-sub { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }

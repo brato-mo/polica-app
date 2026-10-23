@@ -1274,6 +1274,20 @@ export function parseArticleCards(text, wantStatus = null) {
   return out;
 }
 
+/** Words that make an article name a Christmas or New Year one (comma-separated; case and č, ć, š, ž, đ do not matter). */
+export const XMAS_WORDS = 'božić, novogodišnj, nova godina, novu godinu, nove godine, xmas, x-mas, christmas, new year, jelk, advent, djed mraz, santa claus';
+
+/**
+ * A test "does this name mention one of the words", each word at the start of a word of the name ("božić" finds
+ * "Božićna kugla" but not "Predbožić"); null when there are no words.
+ */
+export function wordMatcher(words) {
+  const list = String(words || '').split(',').map((w) => fold(w)).filter((w) => w.length >= 3);
+  if (!list.length) return null;
+  const rx = new RegExp(`(?:^|[^a-z0-9])(?:${list.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')).join('|')})`);
+  return (name) => rx.test(fold(name));
+}
+
 /** "dd-mm-yyyy" as a number that sorts by date (0 when it is not a date). */
 export function dateKey(s) {
   const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || ''));

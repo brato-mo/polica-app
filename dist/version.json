@@ -1,7 +1,7 @@
 {
- "code": 21,
- "name": "1.20",
- "notes": "Popravljeno učitavanje liste za rasprodaju na telefonu",
- "size": 1871921,
- "sha256": "f6547ae4cf96e41f948081240fcf5ac4e71b8a13f7763bd7213e2fc58053fc1a"
+ "code": 22,
+ "name": "1.21",
+ "notes": "Lista za rasprodaju sakriva božićne i novogodišnje artikle (može se isključiti u postavkama)",
+ "size": 1876017,
+ "sha256": "89ae8de535e50fbe32a073d1e79717c3572f6cd683ff2241b032578bcc4e8661"
 }
