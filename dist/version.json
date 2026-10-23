@@ -1,7 +1,7 @@
 {
- "code": 24,
- "name": "1.23",
- "notes": "Čitanje narudžbi kupaca ide u mali prozorčić preko aplikacije, a ne preko cijelog ekrana. Ekran za prijavu u StoreFront i dalje ide preko cijelog ekrana",
+ "code": 25,
+ "name": "1.24",
+ "notes": "Čitanje narudžbi kupaca: traka na vrhu s napretkom, a aplikacija ispod nje radi normalno",
  "size": 1880113,
- "sha256": "51332b4f259070a6e712f9425795cb2aefed4418547ca8b99ce594410b21496c"
+ "sha256": "757085bb5c776cad3630621258241a47f179937a71cfbc7a57b0b03e28ec23f7"
 }

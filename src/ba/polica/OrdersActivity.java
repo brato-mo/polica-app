@@ -16,7 +16,11 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.ViewGroup;
+import android.app.Dialog;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.view.Window;
 import android.widget.ProgressBar;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
@@ -56,7 +60,8 @@ public class OrdersActivity extends Activity {
     private WebView web;
     private TextView status; // the line in the small window
     private LinearLayout page, bar, card; // the store's page (with its bar), and the small window over the app
-    private View dim;
+    private Dialog floatBox; // the small strip at the top: it lets the taps through to the app under it
+    private ProgressBar progress;
     private int bgColor;
     private boolean full = true; // full screen (sign-in) or the small window over the app while orders are read
     private final View.OnClickListener cancelClick = new View.OnClickListener() {
@@ -200,46 +205,62 @@ public class OrdersActivity extends Activity {
         page.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         top.addView(page, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        dim = new View(this);
-        dim.setBackgroundColor(0x99000000);
-        dim.setClickable(true); // taps on the dimmed app do nothing
-        dim.setVisibility(View.GONE);
-        top.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(top);
 
         card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER_HORIZONTAL);
-        card.setPadding((int) dp(22), (int) dp(22), (int) dp(22), (int) dp(12));
+        card.setPadding((int) dp(16), (int) dp(12), (int) dp(16), (int) dp(14));
         GradientDrawable box = new GradientDrawable();
         box.setColor(dark ? 0xFF171A21 : 0xFFFFFFFF);
-        box.setCornerRadius(dp(24));
+        box.setCornerRadius(dp(18));
         card.setBackground(box);
-        card.setElevation(dp(8));
-        card.setVisibility(View.GONE);
-        card.addView(new ProgressBar(this), new LinearLayout.LayoutParams((int) dp(36), (int) dp(36)));
+        card.setElevation(dp(6));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         status = new TextView(this);
         status.setTextColor(ink);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         status.setTypeface(Typeface.DEFAULT_BOLD);
-        status.setGravity(Gravity.CENTER);
         status.setText("Čitam narudžbe kupaca…");
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sp.topMargin = (int) dp(14);
-        card.addView(status, sp);
+        row.addView(status, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView stop = new TextView(this);
         stop.setText("Prekini");
         stop.setTextColor(blue);
-        stop.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        stop.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         stop.setTypeface(Typeface.DEFAULT_BOLD);
         stop.setGravity(Gravity.CENTER);
-        stop.setPadding((int) dp(24), (int) dp(12), (int) dp(24), (int) dp(12));
+        stop.setPadding((int) dp(12), (int) dp(8), 0, (int) dp(8));
         stop.setOnClickListener(cancelClick);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.topMargin = (int) dp(6);
-        card.addView(stop, bp);
-        int width = Math.min((int) dp(300), getResources().getDisplayMetrics().widthPixels - (int) dp(48));
-        top.addView(card, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-        setContentView(top);
+        row.addView(stop, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(true);
+        progress.setProgressTintList(ColorStateList.valueOf(blue));
+        progress.setIndeterminateTintList(ColorStateList.valueOf(blue));
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) dp(6));
+        pp.topMargin = (int) dp(10);
+        card.addView(progress, pp);
+
+        LinearLayout frame = new LinearLayout(this);
+        frame.setPadding((int) dp(10), 0, (int) dp(10), 0);
+        frame.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // a window of its own: only the strip is touchable, everything else under it works as usual
+        floatBox = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar);
+        floatBox.setContentView(frame);
+        floatBox.setCancelable(false);
+        Window w = floatBox.getWindow();
+        w.setBackgroundDrawable(new ColorDrawable(0));
+        w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        w.setGravity(Gravity.TOP);
+        w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        w.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        WindowManager.LayoutParams lp = w.getAttributes();
+        lp.y = statusBarHeight();
+        w.setAttributes(lp);
 
         handler = new Handler(Looper.getMainLooper());
         lastMove = System.currentTimeMillis();
@@ -252,8 +273,8 @@ public class OrdersActivity extends Activity {
     }
 
     /**
-     * Full screen: the store's page with its bar (sign-in). Otherwise the small window: the page is almost invisible
-     * (it must stay drawn for the reading), the app shows dimmed behind it, and the card says what is happening.
+     * Full screen: the store's page with its bar (sign-in). Otherwise a strip at the top, and the app under it is usable:
+     * this window lets the taps through (not touchable), the strip is a window of its own.
      */
     private void setFull(boolean on) {
         if (page == null || on == full) return;
@@ -261,8 +282,19 @@ public class OrdersActivity extends Activity {
         page.setBackgroundColor(on ? bgColor : 0);
         bar.setVisibility(on ? View.VISIBLE : View.GONE);
         web.setAlpha(on ? 1f : 0.01f);
-        dim.setVisibility(on ? View.GONE : View.VISIBLE);
-        card.setVisibility(on ? View.GONE : View.VISIBLE);
+        Window w = getWindow();
+        if (on) {
+            w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            if (floatBox.isShowing()) floatBox.hide();
+        } else {
+            w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            if (!floatBox.isShowing()) floatBox.show();
+        }
+    }
+
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : (int) dp(24);
     }
 
     private void check() {
@@ -316,6 +348,13 @@ public class OrdersActivity extends Activity {
                         if (o.optInt("s") > 0) msg += "\n" + o.optInt("s") + (o.optInt("x") > 0 ? " od " + o.optInt("x") : "") + " pregledano";
                         if (o.optInt("r") > 0) msg += ", " + o.optInt("r") + " novih otvoreno";
                         status.setText(msg);
+                        if (o.optInt("x") > 0) {
+                            progress.setIndeterminate(false);
+                            progress.setMax(o.optInt("x"));
+                            progress.setProgress(Math.min(o.optInt("s"), o.optInt("x")));
+                        } else {
+                            progress.setIndeterminate(true);
+                        }
                         if (o.optBoolean("d")) {
                             boolean noErr = o.isNull("e") || o.optString("e").isEmpty();
                             collect(noErr ? "ok" : "error", noErr ? "" : o.optString("e"));
@@ -412,6 +451,7 @@ public class OrdersActivity extends Activity {
         if (finished) return;
         finished = true;
         if (handler != null) handler.removeCallbacks(poll);
+        if (floatBox != null && floatBox.isShowing()) floatBox.dismiss();
         Intent d = new Intent();
         try {
             JSONObject o = new JSONObject();
@@ -434,6 +474,7 @@ public class OrdersActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (handler != null) handler.removeCallbacks(poll);
+        if (floatBox != null && floatBox.isShowing()) floatBox.dismiss();
         if (web != null) {
             ((ViewGroup) web.getParent()).removeView(web);
             web.destroy();
