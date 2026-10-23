@@ -75,6 +75,7 @@ public class OrdersActivity extends Activity {
     private String tabs = "[\"Ispunjen\",\"Stigao\",\"Zakasnio\",\"Aktivan\"]";
     private String driver;
     private boolean finished;
+    private String lastNote = ""; // the text in the phone's notification, when it changes
     private boolean reloaded;
     private boolean injected;
     private int injections;
@@ -264,6 +265,9 @@ public class OrdersActivity extends Activity {
 
         handler = new Handler(Looper.getMainLooper());
         lastMove = System.currentTimeMillis();
+        // keeps the reading going when the phone is locked: a notification and a wake lock (see ReadService)
+        lastNote = "Čitam narudžbe kupaca…";
+        ReadService.start(this, lastNote);
         web.loadUrl(target);
         handler.postDelayed(poll, POLL_MS);
     }
@@ -348,6 +352,10 @@ public class OrdersActivity extends Activity {
                         if (o.optInt("s") > 0) msg += "\n" + o.optInt("s") + (o.optInt("x") > 0 ? " od " + o.optInt("x") : "") + " pregledano";
                         if (o.optInt("r") > 0) msg += ", " + o.optInt("r") + " novih otvoreno";
                         status.setText(msg);
+                        if (!msg.equals(lastNote)) {
+                            lastNote = msg;
+                            ReadService.note(OrdersActivity.this, msg);
+                        }
                         if (o.optInt("x") > 0) {
                             progress.setIndeterminate(false);
                             progress.setMax(o.optInt("x"));
@@ -452,6 +460,7 @@ public class OrdersActivity extends Activity {
         finished = true;
         if (handler != null) handler.removeCallbacks(poll);
         if (floatBox != null && floatBox.isShowing()) floatBox.dismiss();
+        ReadService.stop(this);
         Intent d = new Intent();
         try {
             JSONObject o = new JSONObject();
@@ -475,6 +484,7 @@ public class OrdersActivity extends Activity {
     protected void onDestroy() {
         if (handler != null) handler.removeCallbacks(poll);
         if (floatBox != null && floatBox.isShowing()) floatBox.dismiss();
+        ReadService.stop(this);
         if (web != null) {
             ((ViewGroup) web.getParent()).removeView(web);
             web.destroy();

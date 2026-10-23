@@ -1,7 +1,7 @@
 {
- "code": 25,
- "name": "1.24",
- "notes": "Čitanje narudžbi kupaca: traka na vrhu s napretkom, a aplikacija ispod nje radi normalno",
+ "code": 26,
+ "name": "1.25",
+ "notes": "Čitanje narudžbi kupaca nastavlja i kad je telefon zaključan (obavijest u gornjoj traci)",
  "size": 1880113,
- "sha256": "757085bb5c776cad3630621258241a47f179937a71cfbc7a57b0b03e28ec23f7"
+ "sha256": "6c5c236adc4b74a435f4ee6f03d509b46c13adaab888474e4b0d62428a5c868c"
 }
