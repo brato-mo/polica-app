@@ -298,9 +298,19 @@ function installUpdate() {
 function checkOnline() {
   try { if (A.storeStatus) A.storeStatus(); } catch (e) { /* ignore */ }
 }
-window.onStoreStatus = (on) => {
+window.onStoreStatus = (on, counts) => {
   const e = $('#onl');
   if (!e) return;
+  if (on && counts) {
+    S.site = {};
+    for (const p of String(counts).split(',')) { const [k, v] = p.split(':'); S.site[k] = +v; }
+    renderOrdersBar();
+    // different numbers than at the last read: read the new orders now (only if nothing is being typed)
+    if (cfg().autoref && siteDiff().length && top().id === 'home' && !$('#q').value.trim() && (!S.autoAt || Date.now() - S.autoAt > 10 * 60 * 1000)) {
+      S.autoAt = Date.now();
+      refreshOrders();
+    }
+  }
   e.hidden = false;
   e.className = 'onl ' + (on ? 'is-on' : 'is-off');
   e.textContent = on ? 'online' : 'offline';
@@ -332,6 +342,8 @@ const DEFAULTS = {
   phone: true, // show the customer's phone
   stale: 12, // hours after which the orders data is called old
   theme: 'auto', // auto = follows the phone, or light / dark
+  autoref: true, // when StoreFront shows different order numbers, read the new orders by itself
+  watch: false, // look at the order numbers in the background and send a notification
   upd: true, // look for a new version of the app when it is opened
 };
 const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) } });
@@ -367,6 +379,8 @@ function renderSettings() {
       <div class="chips">${tabNames.map(([k, t]) => `<button class="chip" type="button" role="checkbox" aria-checked="${c.tabs[k]}" data-tab="${k}">${t}</button>`).join('')}</div></div>
     ${sw('name', 'Prikaži ime kupca', '', c.name)}
     ${sw('phone', 'Prikaži telefon kupca', '', c.phone)}
+    ${sw('autoref', 'Sam učitaj nove narudžbe', 'Kad se otvori Polica i StoreFront pokaže drugačije brojeve, nove narudžbe se same pročitaju (bez dodira)', c.autoref)}
+    ${sw('watch', 'Obavijest o novim narudžbama', 'Svakih pola sata u pozadini (7–21 h) gleda brojeve u StoreFrontu i javi obavijest. Android može odgoditi provjeru, a radi samo dok si prijavljen.', c.watch)}
     ${choice('stale', 'Upozori da su podaci stari nakon', [[6, '6 h'], [12, '12 h'], [24, '24 h']], c.stale)}
     ${act('orders-refresh', 'Osvježi narudžbe sada', o ? `${o.list.length} narudžbi, ${esc(ageText(o.at))}` : 'Još nisu učitane')}
     ${act('orders-clear', 'Obriši narudžbe s telefona', 'Imena, telefoni i artikli se brišu s ovog telefona', true)}
@@ -392,6 +406,7 @@ function onSettingsClick(t) {
   if (t.dataset.set) {
     const k = t.dataset.set;
     setCfg({ [k]: !cfg()[k] });
+    if (k === 'watch') syncWatch();
   } else if (t.dataset.choice) {
     const k = t.dataset.choice;
     setCfg({ [k]: k === 'stale' ? +t.dataset.v : t.dataset.v });
@@ -500,6 +515,24 @@ function refreshOrders() {
   A.orders(JSON.stringify(known), JSON.stringify(['Ispunjen', 'Stigao', 'Zakasnio', 'Aktivan'].filter((k) => t[k])));
 }
 
+const TABS_ALL = ['Aktivan', 'Zakasnio', 'Stigao', 'Ispunjen'];
+// numbers of the last full read, for the enabled tabs: "Aktivan:92,Stigao:45"
+const baseCounts = () => {
+  const o = S.user.orders;
+  if (!o) return '';
+  const t = cfg().tabs;
+  return TABS_ALL.filter((k) => t[k]).map((k) => `${k}:${o.list.filter((x) => x.tab === k).length}`).join(',');
+};
+const syncWatch = () => { try { if (A.watch) A.watch(!!cfg().watch, baseCounts()); } catch (e) { /* ignore */ } };
+// what StoreFront shows now against what was read: [['Aktivan', +3], ...]
+function siteDiff() {
+  const o = S.user.orders;
+  if (!o || !S.site) return [];
+  const t = cfg().tabs;
+  return TABS_ALL.filter((k) => t[k] && S.site[k] != null)
+    .map((k) => [k, S.site[k] - o.list.filter((x) => x.tab === k).length]).filter((x) => x[1] !== 0);
+}
+
 function renderOrdersBar() {
   const b = $('#ordersBar');
   const has = S.plans.length > 0;
@@ -511,6 +544,11 @@ function renderOrdersBar() {
     b.innerHTML = `${ic}<span><b>Narudžbe kupaca</b><small>Učitaj iz StoreFronta, pa Polica javi kad je artikal naručen</small></span><span class="go">Učitaj</span>`;
   } else {
     const c = (t) => o.list.filter((x) => x.tab === t).length;
+    const df = siteDiff();
+    if (df.length) {
+      b.innerHTML = `${ic}<span><b>Na StoreFrontu ima promjena</b><small>${df.map(([k, n]) => `${k} ${n > 0 ? '+' : ''}${n}`).join(', ')} · ${esc(ageText(o.at))}</small></span><span class="go">Osvježi</span>`;
+      return;
+    }
     b.innerHTML = `${ic}<span><b>Narudžbe kupaca: ${o.list.length}</b><small>Aktivan ${c('Aktivan')}, Zakasnio ${c('Zakasnio')}, Stigao ${c('Stigao')}, Ispunjen ${c('Ispunjen')} · ${esc(ageText(o.at))}</small></span><span class="go">Osvježi</span>`;
   }
 }
@@ -981,6 +1019,8 @@ window.onOrders = (r) => {
     S.user.orders = { at: r.at || Date.now(), list: fresh };
     const withItems = fresh.filter((x) => x.items).length;
     toast(`Narudžbe osvježene: ${fresh.length} (${withItems} s artiklima)`);
+    S.site = null;
+    setTimeout(syncWatch, 0);
   } else if (fresh.length) {
     const seen = new Set(fresh.map((x) => x.no));
     S.user.orders = { at: (S.user.orders && S.user.orders.at) || r.at || Date.now(), list: [...fresh, ...prevList.filter((x) => !seen.has(x.no))] };
@@ -1699,6 +1739,7 @@ function boot() {
   S.mode = cfg().mode === 'orders' ? 'orders' : 'plan';
   bind();
   checkOnline();
+  syncWatch();
   renderHome();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);

@@ -463,71 +463,19 @@ public class MainActivity extends Activity {
 
     private boolean probing;
 
-    /** Loads the customer-orders page in a 1-pixel hidden WebView: signed in = the page shows its tabs, signed out = it leaves for the sign-in page. */
     private void probeStore() {
         if (probing) return;
         probing = true;
-        final String host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
-        final WebView w = new WebView(this);
-        WebSettings st = w.getSettings();
-        st.setJavaScriptEnabled(true);
-        st.setDomStorageEnabled(true);
-        st.setAllowFileAccess(false);
-        st.setAllowContentAccess(false);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
-        w.setAlpha(0f);
-        w.setWebViewClient(new WebViewClient() {
+        StoreProbe.run(this, (android.view.ViewGroup) getWindow().getDecorView(), new StoreProbe.Callback() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                return !"https".equals(r.getUrl().getScheme());
+            public void done(boolean online, String counts) {
+                probing = false;
+                runJs("window.onStoreStatus&&onStoreStatus(" + online + "," + org.json.JSONObject.quote(counts) + ")");
             }
         });
-        ((android.view.ViewGroup) getWindow().getDecorView()).addView(w, new android.view.ViewGroup.LayoutParams(1, 1));
-        w.loadUrl("https://" + host + "/ui/legacy-customer-orders");
-        final long t0 = System.currentTimeMillis();
-        final boolean[] over = {false};
-        final Runnable[] tick = new Runnable[1];
-        tick[0] = new Runnable() {
-            @Override
-            public void run() {
-                if (over[0]) return;
-                String u = w.getUrl();
-                boolean away = false;
-                try {
-                    away = u != null && !host.equals(Uri.parse(u).getHost()) && w.getProgress() >= 100;
-                } catch (Exception ignored) {
-                }
-                if (away || System.currentTimeMillis() - t0 > 20000) {
-                    finish(false);
-                    return;
-                }
-                if (u != null && u.contains(host)) {
-                    w.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';return /(Aktivan|Ispunjen|Stigao|Zakasnio) \\(\\d+\\)/.test(t)})()", new android.webkit.ValueCallback<String>() {
-                        @Override
-                        public void onReceiveValue(String v) {
-                            if ("true".equals(v)) finish(true);
-                        }
-                    });
-                }
-                ui.postDelayed(tick[0], 700);
-            }
-
-            private void finish(boolean on) {
-                if (over[0]) return;
-                over[0] = true;
-                probing = false;
-                try {
-                    ((android.view.ViewGroup) w.getParent()).removeView(w);
-                    w.destroy();
-                } catch (Exception ignored) {
-                }
-                CookieManager.getInstance().flush();
-                runJs("window.onStoreStatus&&onStoreStatus(" + on + ")");
-            }
-        };
-        ui.postDelayed(tick[0], 1500);
     }
+
+    private static final int REQ_NOTIF = 9;
 
     // ----------------------------------------------------------------- bridge
 
@@ -540,6 +488,21 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     probeStore();
+                }
+            });
+        }
+
+        /** Background look at the order numbers: on/off, and the numbers of the last full read. */
+        @JavascriptInterface
+        public void watch(final boolean on, final String base) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (on && Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
+                    }
+                    OrderWatch.set(MainActivity.this, on, base);
                 }
             });
         }

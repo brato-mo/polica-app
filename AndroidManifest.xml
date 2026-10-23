@@ -11,6 +11,10 @@
     <!-- Self-update: the app downloads its own new version and asks Android to install it (the user confirms). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Background look at the order numbers: a notification, and the schedule survives a restart. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
@@ -65,5 +69,6 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <service android:name=".OrderWatch" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

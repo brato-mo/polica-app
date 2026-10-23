@@ -1,7 +1,7 @@
 {
- "code": 16,
- "name": "1.15",
- "notes": "Točnija online/offline oznaka StoreFronta",
- "size": 1855465,
- "sha256": "d241957745b635428a980b10ba8eba0b568bb3932665085479b49783a5949c95"
+ "code": 17,
+ "name": "1.16",
+ "notes": "Brza provjera brojeva narudžbi, samo učitavanje novih i obavijest u pozadini",
+ "size": 1859561,
+ "sha256": "24e5b9c8a0f0551b497027708c4a8c32577b097cf6806b15ac2778e71074c0d9"
 }
