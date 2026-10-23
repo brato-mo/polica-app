@@ -993,3 +993,6 @@ svg { display: block; }
 .clr-line s { color: var(--ink-3); font-weight: 500; margin-left: 2px; }
 .clr-sub { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
 .clr-note { margin: 10px 2px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.clr-diag { margin: 16px 2px 0; font-size: 13px; color: var(--ink-2); }
+.clr-diag summary { font-weight: 700; padding: 8px 0; cursor: pointer; }
+.clr-diag pre { margin: 4px 0 0; padding: 12px; border-radius: 14px; background: var(--surface-2); color: var(--ink-2); font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 22em; overflow: auto; user-select: text; }

@@ -410,16 +410,45 @@ function renderClearList() {
   $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}</small>`;
   $('#clrList').innerHTML = list.length ? `<div class="list">${list.map(clrRow).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
   const lim = (c.limited || []);
-  $('#clrNote').textContent = lim.length ? `StoreFront kaže da za status ${lim.join(' i ')} ima previše rezultata, pa taj dio liste nije učitan.` : '';
+  const notes = [];
+  if (lim.length) notes.push(`StoreFront kaže da za status ${lim.join(' i ')} ima previše rezultata, pa taj dio liste nije učitan.`);
+  for (const x of c.short || []) notes.push(`Status ${x.st}: StoreFront javlja ${x.found} artikala, a pročitano ih je ${x.got}.`);
+  $('#clrNote').textContent = notes.join(' ');
+}
+
+/** What the last reading found, for the box at the bottom of the screen (to be shown to whoever fixes the reader). */
+function clrDetails(open) {
+  const i = S.user.clrInfo;
+  if (!i) return '';
+  const L = [];
+  for (const p of i.parts || []) {
+    L.push(p.limited ? `Status ${p.st}: StoreFront kaže da ima previše rezultata` : `Status ${p.st}: StoreFront javlja ${p.found < 0 ? '?' : p.found}, pročitano ${p.got}`);
+    if (p.ex) L.push(`Kartica: ${p.ex}`);
+  }
+  const d = i.diag;
+  if (d) {
+    L.push(`Čitanje je stalo kod statusa ${d.st} (${i.how === 'partial' ? 'djelimično' : 'ništa pročitano'}).`);
+    if (d.last) L.push(`Stranica javlja: pronađeno ${d.last.f}, kartica ${d.last.r}${d.last.m ? ', previše rezultata' : ''}`);
+    if (d.page) {
+      L.push(`Redova teksta: ${d.page.lines}, kartica: ${d.page.cards}`);
+      if (d.page.head) L.push(`Početak: ${d.page.head}`);
+      if (d.page.first) L.push(`Prva kartica: ${d.page.first}`);
+      if (d.page.tail) L.push(`Kraj: ${d.page.tail}`);
+    }
+  }
+  if (i.err) L.push(`Greška: ${i.err}`);
+  if (!L.length) return '';
+  return `<details class="clr-diag"${open ? ' open' : ''}><summary>Detalji čitanja</summary><pre>${esc(L.join('\n').slice(0, 2400))}</pre></details>`;
 }
 
 function renderClearance() {
   const body = $('#clearBody');
   const c = S.user.clear;
   if (!c || !c.list) {
-    body.innerHTML = `<p class="empty">Lista još nije učitana.</p>
-      <button class="btn btn-primary btn-block" type="button" data-act="clear-refresh">${icon('refresh')}Učitaj iz StoreFronta</button>
-      <p class="hint">Čitaju se artikli sa statusom ${clrStatuses().join(' i ')} koji su na zalihi u grupi Kućanstvo.</p>`;
+    const failed = S.user.clrInfo && S.user.clrInfo.how !== 'cancelled' && (S.user.clrInfo.diag || S.user.clrInfo.err || (S.user.clrInfo.parts || []).some((p) => p.got === 0 && !p.limited && p.found !== 0));
+    body.innerHTML = `<p class="empty">${failed ? 'Nisam uspio pročitati listu.' : 'Lista još nije učitana.'}</p>
+      <button class="btn btn-primary btn-block" type="button" data-act="clear-refresh">${icon('refresh')}${failed ? 'Pokušaj ponovo' : 'Učitaj iz StoreFronta'}</button>
+      <p class="hint">Čitaju se artikli sa statusom ${clrStatuses().join(' i ')} koji su na zalihi u grupi Kućanstvo.</p>${clrDetails(failed)}`;
     return;
   }
   const n = (s) => c.list.filter((x) => x.st === s).length;
@@ -435,7 +464,7 @@ function renderClearance() {
       </form>
       <div class="clr-sort"><span>Poredaj:</span>${sorts.map(([v, t]) => `<button class="chip" type="button" aria-pressed="${S.clr.sort === v}" data-clr-sort="${v}">${t}</button>`).join('')}</div>
     </div>
-    <div id="clrList"></div><p class="clr-note" id="clrNote"></p>`;
+    <div id="clrList"></div><p class="clr-note" id="clrNote"></p>${clrDetails(false)}`;
   $('#clrQ').addEventListener('input', (e) => { S.clr.q = e.target.value; renderClearList(); });
   $('#clrForm').addEventListener('submit', (e) => { e.preventDefault(); $('#clrQ').blur(); });
   renderClearList();
@@ -447,21 +476,30 @@ window.onClearance = (r) => {
   const want = clrStatuses();
   const got = {};
   const limited = [];
+  const short = [];
+  const info = [];
   for (const p of Array.isArray(r.parts) ? r.parts : []) {
     if (!/^\d{2}$/.test(p.st) || !want.includes(p.st)) continue;
-    if (p.limited) { limited.push(p.st); continue; }
-    got[p.st] = core.parseArticleRows(p.text, p.st);
+    if (p.limited) { limited.push(p.st); info.push({ st: p.st, found: -1, got: 0, limited: true }); continue; }
+    const rows = core.parseArticleCards(p.text, p.st);
+    got[p.st] = rows;
+    if (p.found > 0 && rows.length < p.found) short.push({ st: p.st, found: p.found, got: rows.length });
+    info.push({ st: p.st, found: typeof p.found === 'number' ? p.found : -1, got: rows.length, ex: String(p.text || '').split(/\n{2,}/)[0].split('\n').join(' | ').slice(0, 420) });
   }
+  const dg = r.diag && typeof r.diag === 'object' ? r.diag : null;
+  S.user.clrInfo = { at: r.at || Date.now(), how: String(r.how || ''), parts: info, diag: dg ? JSON.parse(JSON.stringify(dg, (k, v) => (typeof v === 'string' ? v.slice(0, 800) : v))) : null, err: String(r.err || '').slice(0, 80) };
   if (!Object.keys(got).length) {
-    toast(limited.length ? `StoreFront: za status ${limited.join(' i ')} ima previše rezultata.` : 'Nisam uspio pročitati artikle. Provjeri prijavu u StoreFront.');
+    saveUser();
+    toast(limited.length ? `StoreFront: za status ${limited.join(' i ')} ima previše rezultata.` : 'Nisam uspio pročitati artikle. Detalji su na ekranu Za rasprodaju.');
+    if (top().id === 'clearance') renderClearance();
     return;
   }
   // a status that was read replaces its old rows; one that could not be read keeps what was there
   const list = [];
   for (const st of want) list.push(...(got[st] || (prev && prev.list ? prev.list.filter((x) => x.st === st) : [])));
-  S.user.clear = { at: r.at || Date.now(), st: want, group: r.group || cfg().group, list, limited };
+  S.user.clear = { at: r.at || Date.now(), st: want, group: r.group || cfg().group, list, limited, short };
   saveUser();
-  const partial = r.how !== 'ok' || limited.length;
+  const partial = r.how !== 'ok' || limited.length || short.length;
   toast(partial ? 'Lista je učitana samo djelimično.' : `Učitano: ${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}`);
   if (top().id === 'clearance') renderClearance();
   renderClearBar();

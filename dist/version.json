@@ -1,7 +1,7 @@
 {
- "code": 20,
- "name": "1.19",
- "notes": "Lista artikala za rasprodaju (status 21 i 81)",
- "size": 1867753,
- "sha256": "9d47682906575f75e29c26953acb2131efb3063ad680f1acbdaa0289b12172b5"
+ "code": 21,
+ "name": "1.20",
+ "notes": "Popravljeno učitavanje liste za rasprodaju na telefonu",
+ "size": 1871921,
+ "sha256": "f6547ae4cf96e41f948081240fcf5ac4e71b8a13f7763bd7213e2fc58053fc1a"
 }

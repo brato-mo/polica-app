@@ -29,6 +29,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -36,15 +38,15 @@ import java.util.regex.Pattern;
 /**
  * Reads the list of articles that are in stock and have a given status code (21, 81) in one product group from the
  * store system's own article search, so the app can show what has to be sold. The employee is signed in on that
- * page; this only reads what the page shows: one page load per status, the rows of the table are handed to the app
- * as text. Nothing is sent anywhere.
+ * page; this only reads what the page shows on the phone: one page load per status, the text of the article cards
+ * (assets/clearance-reader.js) is handed to the app. Nothing is sent anywhere.
  */
 public class ClearanceActivity extends Activity {
     static final String EXTRA_STATUSES = "statuses";
     static final String EXTRA_GROUP = "group";
     static final String EXTRA_JSON = "json";
     private static final long POLL_MS = 400;
-    private static final long STALL_MS = 60000;
+    private static final long STALL_MS = 40000;
     private static final int PAGE_SIZE = 200;
     private static final int MAX_PAGES = 4;
     private static final Pattern CODE = Pattern.compile("\\d{2}");
@@ -62,13 +64,16 @@ public class ClearanceActivity extends Activity {
     private int waitEpoch;
     private String last = "";
     private int same;
-    private int rows;
     private final StringBuilder text = new StringBuilder();
     private final JSONArray parts = new JSONArray();
     private boolean finished;
     private boolean reloaded;
     private boolean reading;
+    private long readingSince;
     private long lastMove;
+    private String reader; // the script that reads the cards, from assets
+    private JSONObject lastAnswer; // what the page said at the last look, for the details box
+    private JSONObject diag;
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
@@ -110,6 +115,18 @@ public class ClearanceActivity extends Activity {
         if (g != null && GROUP.matcher(g).matches()) group = g;
         if (statuses.isEmpty()) {
             finishWith("error", "statuses");
+            return;
+        }
+        try {
+            InputStream in = getAssets().open("clearance-reader.js");
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            reader = bo.toString("UTF-8");
+        } catch (Exception e) {
+            finishWith("error", "reader");
             return;
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -206,6 +223,8 @@ public class ClearanceActivity extends Activity {
         waitEpoch = epoch + 1;
         last = "";
         same = 0;
+        lastMove = System.currentTimeMillis();
+        if (status != null) showProgress(-1, 0);
         web.loadUrl(urlFor(statuses.get(si), page));
     }
 
@@ -213,13 +232,53 @@ public class ClearanceActivity extends Activity {
         if (status != null) status.setVisibility(onSearch(url) ? View.VISIBLE : View.GONE);
     }
 
+    private void showProgress(int found, int cards) {
+        StringBuilder b = new StringBuilder("Čitam artikle za rasprodaju…\nStatus ").append(statuses.get(si))
+            .append(" (").append(si + 1).append(" od ").append(statuses.size()).append(")");
+        if (cards > 0) b.append("\n").append(cards).append(found > 0 ? " od " + found : "").append(" artikala");
+        status.setText(b.toString());
+    }
+
+    /** The reader script of the page, asked for one of its answers ("check", "grab", "sample"). */
+    private String call(String mode) {
+        return "(" + reader + "\n)(\"" + mode + "\")";
+    }
+
+    private static String asString(String value) {
+        if (value == null) return "";
+        try {
+            Object v = new JSONTokener(value).nextValue();
+            return v instanceof String ? (String) v : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static JSONObject asObject(String value) {
+        String s = asString(value);
+        if (s.isEmpty()) return null;
+        try {
+            return new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void check() {
-        if (finished || web == null || reading) return;
+        if (finished || web == null) return;
+        long now = System.currentTimeMillis();
+        if (reading) {
+            if (now - readingSince > 20000) { // the page does not answer
+                reading = false;
+                timeout();
+            }
+            return;
+        }
         final String url = web.getUrl();
         showStatus(url);
         Uri u = url == null ? null : Uri.parse(url);
         if (!onSearch(url)) {
-            lastMove = System.currentTimeMillis(); // signing in takes as long as it takes
+            lastMove = now; // signing in takes as long as it takes
             if (u != null && host.equals(u.getHost()) && !reloaded && u.getPath() != null && u.getPath().startsWith("/ui")) {
                 reloaded = true;
                 load();
@@ -227,83 +286,70 @@ public class ClearanceActivity extends Activity {
             return;
         }
         if (epoch < waitEpoch) return; // the page that is still on screen is the old one
+        if (now - lastMove > STALL_MS) { // nothing has changed for a long time
+            timeout();
+            return;
+        }
         final int myEpoch = epoch, mySi = si, myPage = page;
-        status.setText("Čitam artikle za rasprodaju…\nStatus " + statuses.get(si) + " (" + (si + 1) + " od " + statuses.size() + ")"
-            + (rows > 0 ? "\n" + rows + " artikala" : ""));
-        web.evaluateJavascript("(function(){var m=document.querySelector('main');if(!m)return '';var t=m.innerText||'';"
-            + "var f=/Prona\\S* (\\d+) artik/.exec(t);var many=/previ\\S+ rezultata/i.test(t);var ls=t.split('\\n'),r=0;"
-            + "for(var i=0;i<ls.length;i++)if(/^\\d{7} \\(\\d{1,2}\\)\\t/.test(ls[i]))r++;"
-            + "return JSON.stringify({f:f?+f[1]:-1,r:r,m:many})})()", new ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String value) {
-                    if (finished || reading || value == null) return;
-                    if (myEpoch != epoch || mySi != si || myPage != page) return; // answer of a page that is gone
-                    try {
-                        Object v = new JSONTokener(value).nextValue();
-                        if (!(v instanceof String) || ((String) v).isEmpty()) {
-                            if (System.currentTimeMillis() - lastMove > STALL_MS) timeout();
-                            return;
-                        }
-                        JSONObject o = new JSONObject((String) v);
-                        int f = o.optInt("f", -1);
-                        int r = o.optInt("r");
-                        String key = si + "/" + page + "/" + f + "/" + r + "/" + o.optBoolean("m");
-                        if (!key.equals(last)) {
-                            last = key;
-                            same = 0;
-                            lastMove = System.currentTimeMillis();
-                            return;
-                        }
-                        same++;
-                        if (o.optBoolean("m")) {
-                            if (same >= 2) partDone(-1, true);
-                            return;
-                        }
-                        int expect = f < 0 ? -1 : Math.min(PAGE_SIZE, f - (page - 1) * PAGE_SIZE);
-                        if (expect >= 0 && ((r >= expect && same >= 2) || (r > 0 && same >= 10))) {
-                            if (expect == 0) {
-                                partDone(f, false);
-                            } else {
-                                grab(f);
-                            }
-                        } else if (System.currentTimeMillis() - lastMove > STALL_MS) {
-                            timeout();
-                        }
-                    } catch (Exception ignored) {
-                    }
+        web.evaluateJavascript(call("check"), new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+                if (finished || reading) return;
+                if (myEpoch != epoch || mySi != si || myPage != page) return; // answer of a page that is gone
+                JSONObject o = asObject(value);
+                if (o == null) return; // the script failed on this page; the stall timer decides
+                lastAnswer = o;
+                int f = o.optInt("f", -1);
+                int r = o.optInt("r");
+                boolean many = o.optBoolean("m");
+                boolean zero = o.optBoolean("z");
+                showProgress(f, r);
+                String key = si + "/" + page + "/" + f + "/" + r + "/" + many + "/" + zero;
+                if (!key.equals(last)) {
+                    last = key;
+                    same = 0;
+                    lastMove = System.currentTimeMillis();
+                    return;
                 }
-            });
+                same++;
+                if (many) {
+                    if (same >= 2) partDone(-1, true);
+                    return;
+                }
+                int expect = f < 0 ? -1 : Math.min(PAGE_SIZE, f - (page - 1) * PAGE_SIZE);
+                if (r > 0 && ((expect >= 0 && r >= expect && same >= 2) || same >= 10)) {
+                    grab(f, r);
+                } else if (r == 0 && ((f == 0 && same >= 2) || (f < 0 && zero && same >= 3))) {
+                    partDone(0, false);
+                }
+            }
+        });
     }
 
-    /** The rows of the table on this page, as text (tab-separated), to be read by the app. */
-    private void grab(final int found) {
+    /** The text of the cards on this page, to be read by the app. */
+    private void grab(final int found, final int cards) {
         reading = true;
-        web.evaluateJavascript("(function(){var m=document.querySelector('main');var ls=(m?m.innerText:'').split('\\n'),o=[];"
-            + "for(var i=0;i<ls.length&&o.length<400;i++)if(/^\\d{7} \\(\\d{1,2}\\)\\t/.test(ls[i]))o.push(ls[i].slice(0,500));"
-            + "return o.join('\\n')})()", new ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String value) {
-                    reading = false;
-                    if (finished) return;
-                    try {
-                        Object v = new JSONTokener(value == null ? "\"\"" : value).nextValue();
-                        String t = v instanceof String ? (String) v : "";
-                        if (text.length() + t.length() < 300000) {
-                            if (text.length() > 0 && t.length() > 0) text.append('\n');
-                            text.append(t);
-                            for (int i = 0; i < t.length(); i++) if (t.charAt(i) == '\n') rows++;
-                            if (t.length() > 0) rows++;
-                        }
-                    } catch (Exception ignored) {
-                    }
-                    if (found > page * PAGE_SIZE && page < MAX_PAGES) {
-                        page++;
-                        load();
-                    } else {
-                        partDone(found, false);
-                    }
+        readingSince = System.currentTimeMillis();
+        web.evaluateJavascript(call("grab"), new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+                if (!reading) return; // gave up meanwhile
+                reading = false;
+                if (finished) return;
+                String t = asString(value);
+                if (t.length() > 0 && text.length() + t.length() < 600000) {
+                    if (text.length() > 0) text.append("\n\n");
+                    text.append(t);
                 }
-            });
+                boolean more = found > page * PAGE_SIZE || (found < 0 && cards >= PAGE_SIZE);
+                if (more && page < MAX_PAGES) {
+                    page++;
+                    load();
+                } else {
+                    partDone(found, false);
+                }
+            }
+        });
     }
 
     private void partDone(int found, boolean limited) {
@@ -317,7 +363,6 @@ public class ClearanceActivity extends Activity {
         } catch (Exception ignored) {
         }
         text.setLength(0);
-        rows = 0;
         page = 1;
         si++;
         lastMove = System.currentTimeMillis();
@@ -328,8 +373,35 @@ public class ClearanceActivity extends Activity {
         }
     }
 
+    /** Nothing changed for too long: hands over what was read and a look at what the page shows, for the details box. */
     private void timeout() {
-        finishWith(parts.length() > 0 ? "partial" : "timeout", null);
+        if (finished || reading || web == null) return;
+        reading = true;
+        readingSince = System.currentTimeMillis();
+        final String how = parts.length() > 0 ? "partial" : "timeout";
+        final String st = statuses.get(Math.min(si, statuses.size() - 1));
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!finished) finishWith(how, null);
+            }
+        }, 2500);
+        web.evaluateJavascript(call("sample"), new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+                if (finished) return;
+                try {
+                    JSONObject d = new JSONObject();
+                    d.put("st", st);
+                    if (lastAnswer != null) d.put("last", lastAnswer);
+                    JSONObject smp = asObject(value);
+                    if (smp != null) d.put("page", smp);
+                    diag = d;
+                } catch (Exception ignored) {
+                }
+                finishWith(how, null);
+            }
+        });
     }
 
     private static String cut(String s, int max) {
@@ -350,6 +422,7 @@ public class ClearanceActivity extends Activity {
             o.put("at", System.currentTimeMillis());
             o.put("group", group);
             o.put("parts", parts);
+            if (diag != null) o.put("diag", diag);
             d.putExtra(EXTRA_JSON, o.toString());
         } catch (Exception ignored) {
         }

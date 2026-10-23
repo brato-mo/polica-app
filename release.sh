@@ -19,6 +19,7 @@ json.dump({'code': code, 'name': name, 'notes': notes, 'size': len(data),
 PY
 echo "$CODE" > version-code.txt
 git add -A
-git -c user.name="Polica" -c user.email="polica@users.noreply.github.com" commit -q -m "Version $NAME${NOTES:+: $NOTES}"
+# TRAILERS (optional, set by whoever runs the script) is added to the end of the commit message
+git -c user.name="Polica" -c user.email="polica@users.noreply.github.com" commit -q -m "Version $NAME${NOTES:+: $NOTES}" ${TRAILERS:+-m "$TRAILERS"}
 git push -q origin HEAD:main
 echo "published $NAME (code $CODE)"

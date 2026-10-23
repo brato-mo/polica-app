@@ -1129,34 +1129,146 @@ export function sharedSections(oldPlan, newPlan) {
   return new Set([...sectionCodes(oldPlan)].filter((c) => nc.has(c)));
 }
 
-/** For tests and debugging. */
+/** The number at the start of a text: "98 KOM", "2.75 BAM", "1,299.00 BAM", "1.200 KOM" (null when there is none). */
+function numOf(s) {
+  const m = /^(-?\d[\d.,\s ]*)/.exec(String(s || '').trim());
+  if (!m) return null;
+  let x = m[1].replace(/[\s ]+/g, '');
+  const lc = x.lastIndexOf(',');
+  const ld = x.lastIndexOf('.');
+  if (lc >= 0 && ld >= 0) {
+    x = lc > ld ? x.replace(/\./g, '').replace(',', '.') : x.replace(/,/g, ''); // the last one is the decimal point
+  } else if (lc >= 0 || ld >= 0) {
+    const parts = x.split(lc >= 0 ? ',' : '.');
+    const group = parts.length > 2 || (parts[1].length === 3 && /^-?\d{1,3}$/.test(parts[0])); // 1,200 or 1.234.567
+    x = group ? parts.join('') : parts.join('.');
+  }
+  const v = parseFloat(x);
+  return Number.isFinite(v) ? v : null;
+}
+const qtyOf = (s) => {
+  const n = numOf(s);
+  const u = /([A-Za-zČĆŽŠĐčćžšđ.]{1,6})\s*$/.exec(String(s || '').trim());
+  return n == null ? { n: 0, u: '' } : { n, u: u ? u[1] : '' };
+};
+const moneyOf = (s) => numOf(s);
+/** A date as StoreFront writes it, "dd-mm-yyyy"; '' when it is not one. */
+const dayOf = (s) => {
+  const t = String(s || '').trim();
+  let m = /^(\d{1,2})[-./](\d{1,2})[-./](\d{4})\.?$/.exec(t);
+  if (m) return `${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}-${m[3]}`;
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+
 /**
  * Rows of StoreFront's article table (tab-separated): "3815501 (21)", name, free stock, store stock, price,
  * regular price, DD date, date of the last status change. Anything that does not look like a row is skipped.
+ * (The phone shows cards, not this table: see parseArticleCards.)
  */
 export function parseArticleRows(text, wantStatus = null) {
   const out = [];
-  const qty = (s) => {
-    const m = /^(-?\d+(?:[.,]\d+)?)\s*(\S*)$/.exec(String(s || '').trim());
-    return m ? { n: +m[1].replace(',', '.'), u: m[2].slice(0, 6) } : { n: 0, u: '' };
-  };
-  const money = (s) => {
-    const m = /^(-?\d+(?:[.,]\d+)?)/.exec(String(s || '').trim());
-    return m ? +m[1].replace(',', '.') : null;
-  };
   for (const line of String(text || '').split('\n')) {
     const c = line.split('\t');
     const m = /^(\d{7}) \((\d{1,2})\)$/.exec((c[0] || '').trim());
     if (!m || c.length < 6) continue;
     if (wantStatus && m[2] !== wantStatus) continue;
-    const free = qty(c[2]);
-    const store = qty(c[3]);
+    const free = qtyOf(c[2]);
+    const store = qtyOf(c[3]);
     out.push({
       num: m[1], st: m[2], name: (c[1] || '').trim().slice(0, 90),
       free: free.n, stock: store.n, unit: store.u || free.u,
-      price: money(c[4]), reg: money(c[5]),
+      price: moneyOf(c[4]), reg: moneyOf(c[5]),
       dd: /^\d{2}-\d{2}-\d{4}$/.test((c[6] || '').trim()) ? c[6].trim() : '',
       chg: /^\d{2}-\d{2}-\d{4}$/.test((c[7] || '').trim()) ? c[7].trim() : '',
+    });
+  }
+  return out;
+}
+
+const CARD_NUM = /^(\d{7})\s+\((\d{1,3})\)$/;
+// the label lines of a card, by the start of their words (the same words as the columns of the desktop table)
+const CARD_LABELS = [
+  ['free', /^slobodn\S*\s+zaliha/],
+  ['stock', /^zaliha\s+u\s+prodavaon\S*/],
+  ['price', /^(?:trenutn|aktualn)\S*\s+cijen\S*/],
+  ['reg', /^(?:redovn|regularn|stara|prethodn)\S*\s+cijen\S*/],
+  ['dd', /^(?:dd(?:\s+datum)?|datum\s+ukidanja)(?![\p{L}\d])/u],
+  ['chg', /^(?:(?:datum\s+)?promjen\S*\s+statusa|status\s+(?:od|promijenjen))/],
+];
+const QTY_LINE = /^-?\d[\d.,\s ]*\s*[A-Za-zČĆŽŠĐčćžšđ.]{1,6}$/;
+const MONEY_LINE = /^-?\d[\d.,\s ]*\s*(?:BAM|KM|EUR|€)$/i;
+const DATE_LINE = /^(?:\d{1,2}[-./]\d{1,2}[-./]\d{4}\.?|\d{4}-\d{2}-\d{2})$/;
+
+/** Which field a line names, and the value written on the same line after it ('' when the value is on the next one). */
+function cardLabel(line) {
+  const t = String(line || '').trim();
+  if (!t || t.length > 60) return null;
+  const key = t.toLowerCase().replace(/\s+/g, ' ');
+  for (const [field, rx] of CARD_LABELS) {
+    const m = rx.exec(key);
+    if (!m) continue;
+    const rest = key.slice(m[0].length);
+    if (rest && !/^[:\s]/.test(rest)) continue; // the label is only the beginning of a longer word
+    const value = t.slice(m[0].length).replace(/^[:\s]+/, '');
+    if (value && !/^[-\d]/.test(value)) continue; // a name that starts like a label, not a label with a value
+    return { field, rest: value };
+  }
+  return null;
+}
+
+/**
+ * Articles from the text of StoreFront's article cards as the phone shows them. The text is the cards one after the
+ * other, split by an empty line; a card is the name, "3815501 (21)", then label and value lines:
+ *   Slobodna zaliha / 4 KOM / Zaliha u prodavaonici / 4 KOM / Trenutna cijena / 5.00 BAM / Redovna cijena / 5.00 BAM /
+ *   DD datum / 31-12-9998 / Promjena statusa / 16-01-2024
+ * Same fields as parseArticleRows. A value that is missing or not in the expected shape ends up as 0, null or ''.
+ */
+export function parseArticleCards(text, wantStatus = null) {
+  const out = [];
+  const seen = new Set();
+  const dataLike = (s) => !s || QTY_LINE.test(s) || MONEY_LINE.test(s) || DATE_LINE.test(s) || (() => { const l = cardLabel(s); return !!l && !l.rest; })();
+  for (const chunk of String(text || '').split(/\n{2,}/)) {
+    const L = chunk.split('\n').map((x) => x.trim()).filter(Boolean);
+    const i0 = L.findIndex((x) => CARD_NUM.test(x));
+    if (i0 < 0) continue;
+    const m = CARD_NUM.exec(L[i0]);
+    if (wantStatus && m[2] !== wantStatus) continue;
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    const prev = L[i0 - 1];
+    const next = L[i0 + 1];
+    const name = !dataLike(prev) ? prev : !dataLike(next) ? next : '';
+    const f = {};
+    const used = new Set();
+    for (let j = i0 + 1; j < L.length; j++) {
+      const lab = cardLabel(L[j]);
+      if (!lab || f[lab.field] !== undefined) continue;
+      let v = lab.rest;
+      if (!v && j + 1 < L.length && !cardLabel(L[j + 1])) { v = L[j + 1]; used.add(j + 1); }
+      f[lab.field] = v;
+    }
+    // labels nobody recognised: the order of the table's columns
+    const after = L.slice(i0 + 1).filter((x, k) => !used.has(i0 + 1 + k));
+    if (f.free === undefined && f.stock === undefined) {
+      const q = after.filter((x) => QTY_LINE.test(x) && !MONEY_LINE.test(x));
+      if (q.length) { f.free = q[0]; f.stock = q[1] || q[0]; }
+    }
+    if (f.price === undefined && f.reg === undefined) {
+      const q = after.filter((x) => MONEY_LINE.test(x));
+      if (q.length) { f.price = q[0]; f.reg = q[1] || q[0]; }
+    }
+    if (f.dd === undefined && f.chg === undefined) {
+      const q = after.filter((x) => DATE_LINE.test(x));
+      if (q.length >= 2) { f.dd = q[0]; f.chg = q[1]; }
+    }
+    const free = qtyOf(f.free);
+    const store = qtyOf(f.stock);
+    out.push({
+      num: m[1], st: m[2], name: (name || '').slice(0, 90),
+      free: free.n, stock: store.n, unit: store.u || free.u,
+      price: moneyOf(f.price), reg: moneyOf(f.reg),
+      dd: dayOf(f.dd), chg: dayOf(f.chg),
     });
   }
   return out;
@@ -1168,4 +1280,5 @@ export function dateKey(s) {
   return m ? +m[3] * 10000 + +m[2] * 100 + +m[1] : 0;
 }
 
+/** For tests and debugging. */
 export const _internals = { glyphRun, buildLines, findTable, readTable, buildBlocks, readLabel };
