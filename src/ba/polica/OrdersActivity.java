@@ -16,6 +16,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.ViewGroup;
+import android.graphics.drawable.GradientDrawable;
+import android.widget.ProgressBar;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -52,7 +54,17 @@ public class OrdersActivity extends Activity {
     private static final long STALL_MS = 90000;
 
     private WebView web;
-    private TextView status;
+    private TextView status; // the line in the small window
+    private LinearLayout page, bar, card; // the store's page (with its bar), and the small window over the app
+    private View dim;
+    private int bgColor;
+    private boolean full = true; // full screen (sign-in) or the small window over the app while orders are read
+    private final View.OnClickListener cancelClick = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            finishWith(null, "cancelled", null);
+        }
+    };
     private Handler handler;
     private String known = "[]";
     private String tabs = "[\"Ispunjen\",\"Stigao\",\"Zakasnio\",\"Aktivan\"]";
@@ -122,18 +134,20 @@ public class OrdersActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         int bg = dark ? 0xFF0E1014 : 0xFFF3F4F7;
+        bgColor = bg;
         int ink = dark ? 0xFFEEF1F7 : 0xFF131620;
         int blue = dark ? 0xFF6D8BFF : 0xFF2B50E6;
-        getWindow().setStatusBarColor(bg);
-        getWindow().setNavigationBarColor(bg);
-        if (!dark) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | 0x00000010);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(bg);
-        root.setFitsSystemWindows(true);
+        // Read the orders in a small window over the app; the store's page stays in place but invisible, so reading
+        // (taps, scrolling) works as before. Full screen only when the employee has to sign in.
+        FrameLayout top = new FrameLayout(this);
 
-        LinearLayout bar = new LinearLayout(this);
+        page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(bg);
+        page.setFitsSystemWindows(true);
+
+        bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding((int) dp(8), (int) dp(4), (int) dp(8), (int) dp(4));
@@ -144,12 +158,7 @@ public class OrdersActivity extends Activity {
         close.setTypeface(Typeface.DEFAULT_BOLD);
         close.setGravity(Gravity.CENTER);
         close.setPadding((int) dp(14), 0, (int) dp(14), 0);
-        close.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finishWith(null, "cancelled", null);
-            }
-        });
+        close.setOnClickListener(cancelClick);
         TextView title = new TextView(this);
         title.setText("Narudžbe kupaca");
         title.setTextColor(ink);
@@ -159,7 +168,7 @@ public class OrdersActivity extends Activity {
         bar.addView(close, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (int) dp(44)));
         bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(new View(this), new LinearLayout.LayoutParams((int) dp(72), (int) dp(44)));
-        root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         FrameLayout body = new FrameLayout(this);
         web = new WebView(this);
@@ -188,19 +197,49 @@ public class OrdersActivity extends Activity {
             }
         });
         body.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        page.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        top.addView(page, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        dim = new View(this);
+        dim.setBackgroundColor(0x99000000);
+        dim.setClickable(true); // taps on the dimmed app do nothing
+        dim.setVisibility(View.GONE);
+        top.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setPadding((int) dp(22), (int) dp(22), (int) dp(22), (int) dp(12));
+        GradientDrawable box = new GradientDrawable();
+        box.setColor(dark ? 0xFF171A21 : 0xFFFFFFFF);
+        box.setCornerRadius(dp(24));
+        card.setBackground(box);
+        card.setElevation(dp(8));
+        card.setVisibility(View.GONE);
+        card.addView(new ProgressBar(this), new LinearLayout.LayoutParams((int) dp(36), (int) dp(36)));
         status = new TextView(this);
         status.setTextColor(ink);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         status.setTypeface(Typeface.DEFAULT_BOLD);
         status.setGravity(Gravity.CENTER);
-        status.setPadding((int) dp(32), 0, (int) dp(32), 0);
-        status.setBackgroundColor(bg);
         status.setText("Čitam narudžbe kupaca…");
-        status.setVisibility(View.GONE);
-        body.addView(status, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        setContentView(root);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = (int) dp(14);
+        card.addView(status, sp);
+        TextView stop = new TextView(this);
+        stop.setText("Prekini");
+        stop.setTextColor(blue);
+        stop.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        stop.setTypeface(Typeface.DEFAULT_BOLD);
+        stop.setGravity(Gravity.CENTER);
+        stop.setPadding((int) dp(24), (int) dp(12), (int) dp(24), (int) dp(12));
+        stop.setOnClickListener(cancelClick);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.topMargin = (int) dp(6);
+        card.addView(stop, bp);
+        int width = Math.min((int) dp(300), getResources().getDisplayMetrics().widthPixels - (int) dp(48));
+        top.addView(card, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        setContentView(top);
 
         handler = new Handler(Looper.getMainLooper());
         lastMove = System.currentTimeMillis();
@@ -209,7 +248,21 @@ public class OrdersActivity extends Activity {
     }
 
     private void showStatus(String url) {
-        if (status != null) status.setVisibility(onOrders(url) ? View.VISIBLE : View.GONE);
+        setFull(!onOrders(url));
+    }
+
+    /**
+     * Full screen: the store's page with its bar (sign-in). Otherwise the small window: the page is almost invisible
+     * (it must stay drawn for the reading), the app shows dimmed behind it, and the card says what is happening.
+     */
+    private void setFull(boolean on) {
+        if (page == null || on == full) return;
+        full = on;
+        page.setBackgroundColor(on ? bgColor : 0);
+        bar.setVisibility(on ? View.VISIBLE : View.GONE);
+        web.setAlpha(on ? 1f : 0.01f);
+        dim.setVisibility(on ? View.GONE : View.VISIBLE);
+        card.setVisibility(on ? View.GONE : View.VISIBLE);
     }
 
     private void check() {

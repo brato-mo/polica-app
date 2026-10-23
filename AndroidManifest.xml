@@ -70,6 +70,7 @@
         <activity
             android:name=".OrdersActivity"
             android:exported="false"
+            android:theme="@style/PopupTheme"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
         <!-- StoreFront article search: the articles with status 21 and 81 that are in stock -->
         <activity
