@@ -974,3 +974,22 @@ svg { display: block; }
 :root[data-theme="dark"] .onl.is-off { color: #ff7b72; }
 
 .set-txt small.crash { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 9em; overflow: auto; display: block; }
+
+/* articles for sale-out (status 21 / 81) */
+.clr-sum { margin: 2px 2px 12px; }
+.clr-sum b { display: block; font-size: 17px; font-weight: 800; }
+.clr-sum small { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.clr-tools { display: flex; flex-direction: column; gap: 10px; margin: 0 0 12px; }
+.clr-sort { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.clr-sort .chip { min-height: 34px; padding: 0 13px; font-size: 13px; }
+.chip[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--on-soft); }
+.clr-item .code { display: flex; align-items: center; gap: 8px; }
+.pill-st { padding: 3px 8px 2px; font-size: 12px; font-weight: 800; }
+.pill-st21 { background: #fff1c9; color: #7a4b00; }
+.pill-st81 { background: #ffd9d4; color: #8a1d12; }
+:root[data-theme="dark"] .pill-st21 { background: #3a2d0f; color: #ffd98a; }
+:root[data-theme="dark"] .pill-st81 { background: #3a1d1c; color: #ffb4a8; }
+.clr-line { font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.clr-line s { color: var(--ink-3); font-weight: 500; margin-left: 2px; }
+.clr-sub { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.clr-note { margin: 10px 2px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }

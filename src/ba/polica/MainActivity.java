@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
     private static final int REQ_SCAN = 2;
     private static final int REQ_STORE = 3;
     private static final int REQ_ORDERS = 4;
+    private static final int REQ_CLEAR = 5;
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,80}");
     private static final Map<String, String> MIME = new HashMap<>();
 
@@ -361,6 +362,9 @@ public class MainActivity extends Activity {
         } else if (req == REQ_ORDERS) {
             String json = data == null ? null : data.getStringExtra(OrdersActivity.EXTRA_JSON);
             runJs("window.onOrders&&onOrders(" + (json == null ? "{how:'cancelled',orders:[]}" : json) + ")");
+        } else if (req == REQ_CLEAR) {
+            String json = data == null ? null : data.getStringExtra(ClearanceActivity.EXTRA_JSON);
+            runJs("window.onClearance&&onClearance(" + (json == null ? "{how:'cancelled',parts:[]}" : json) + ")");
         } else if (req == REQ_SCAN) {
             String js;
             if (result == RESULT_OK && data != null && data.getStringExtra("code") != null) {
@@ -700,6 +704,20 @@ public class MainActivity extends Activity {
                     i.putExtra(OrdersActivity.EXTRA_KNOWN, known);
                     i.putExtra(OrdersActivity.EXTRA_TABS, tabs);
                     startActivityForResult(i, REQ_ORDERS);
+                }
+            });
+        }
+
+        /** Reads the articles in stock with the given status codes (JSON array) in a product group. Answer: window.onClearance. */
+        @JavascriptInterface
+        public void clearance(final String statuses, final String group) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    Intent i = new Intent(MainActivity.this, ClearanceActivity.class);
+                    i.putExtra(ClearanceActivity.EXTRA_STATUSES, statuses);
+                    i.putExtra(ClearanceActivity.EXTRA_GROUP, group);
+                    startActivityForResult(i, REQ_CLEAR);
                 }
             });
         }

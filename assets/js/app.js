@@ -331,6 +331,142 @@ window.onUpdate = (r) => {
   if (top().id === 'settings') renderSettings();
 };
 
+// ----------------------------------------------- articles to sell out (status 21 / 81)
+
+const CLR_ST = ['21', '81'];
+S.clr = { st: 'all', sort: 'stock', q: '' };
+const clrStatuses = () => CLR_ST.filter((k) => cfg().clr[k]);
+const whole = (n) => { try { return Math.round(n).toLocaleString('de-DE'); } catch (e) { return String(Math.round(n)); } };
+const money = (n) => { try { return Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (e) { return Number(n).toFixed(2); } };
+const dmy = (s) => String(s || '').replace(/-/g, '.');
+
+function refreshClearance() {
+  const st = clrStatuses();
+  if (!st.length) { toast('Uključi bar jedan status u postavkama.'); return; }
+  if (!A.clearance) { toast('Ova verzija ne zna čitati listu.'); return; }
+  A.clearance(JSON.stringify(st), cfg().group);
+}
+
+function openClearance() {
+  renderClearance();
+  go('clearance');
+  if (!(S.user.clear && S.user.clear.list)) refreshClearance();
+}
+
+function renderClearBar() {
+  const b = $('#clearBar');
+  if (!b) return;
+  const has = S.plans.length > 0;
+  b.hidden = !has;
+  if (!has) return;
+  const c = S.user.clear;
+  const ic = icon('box');
+  if (!c || !c.list) {
+    b.innerHTML = `${ic}<span><b>Artikli za rasprodaju</b><small>Status ${clrStatuses().join(' i ')} sa zalihom, iz StoreFronta</small></span><span class="go">Učitaj</span>`;
+    return;
+  }
+  const n = (s) => c.list.filter((x) => x.st === s).length;
+  b.innerHTML = `${ic}<span><b>Za rasprodaju: ${c.list.length}</b><small>${c.st.map((k) => `Status ${k}: ${n(k)}`).join(' · ')} · ${esc(ageText(c.at))}</small></span><span class="go">Otvori</span>`;
+}
+
+function clrFiltered() {
+  const c = S.user.clear;
+  if (!c || !c.list) return [];
+  const toks = norm(S.clr.q).split(/\s+/).filter(Boolean);
+  let list = c.list.filter((x) => S.clr.st === 'all' || x.st === S.clr.st);
+  if (toks.length) {
+    list = list.filter((x) => {
+      const hay = norm(`${x.num} ${x.name}`);
+      return toks.every((t) => hay.includes(t));
+    });
+  }
+  const val = (x) => (x.price || 0) * x.stock;
+  const by = S.clr.sort;
+  list.sort((a, b) => (by === 'value' ? val(b) - val(a) : by === 'new' ? core.dateKey(b.chg) - core.dateKey(a.chg) : b.stock - a.stock) || a.name.localeCompare(b.name, 'bs'));
+  return list;
+}
+
+function clrRow(x) {
+  const cut = x.reg != null && x.price != null && x.reg > x.price;
+  const free = x.free !== x.stock ? ` (slobodno ${whole(x.free)})` : '';
+  const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.dd && !x.dd.endsWith('-9998') ? `DD ${dmy(x.dd)}` : ''].filter(Boolean).join(' · ');
+  return `<button class="item clr-item" type="button" data-store="${esc(x.num)}">
+    ${thumb(x.num)}
+    <span class="item-main">
+      <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span></span>
+      <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
+      <span class="clr-line"><b>${whole(x.stock)} ${esc(x.unit || 'KOM')}</b> na zalihi${free}${x.price != null ? ` · ${money(x.price)} KM` : ''}${cut ? ` <s>${money(x.reg)}</s>` : ''}</span>
+      ${meta ? `<span class="clr-sub">${esc(meta)}</span>` : ''}
+    </span>
+    ${icon('chev', 'chev')}
+  </button>`;
+}
+
+function renderClearList() {
+  const c = S.user.clear;
+  if (!c || !$('#clrList')) return;
+  const list = clrFiltered();
+  const value = list.reduce((s, x) => s + (x.price || 0) * x.stock, 0);
+  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}</small>`;
+  $('#clrList').innerHTML = list.length ? `<div class="list">${list.map(clrRow).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
+  const lim = (c.limited || []);
+  $('#clrNote').textContent = lim.length ? `StoreFront kaže da za status ${lim.join(' i ')} ima previše rezultata, pa taj dio liste nije učitan.` : '';
+}
+
+function renderClearance() {
+  const body = $('#clearBody');
+  const c = S.user.clear;
+  if (!c || !c.list) {
+    body.innerHTML = `<p class="empty">Lista još nije učitana.</p>
+      <button class="btn btn-primary btn-block" type="button" data-act="clear-refresh">${icon('refresh')}Učitaj iz StoreFronta</button>
+      <p class="hint">Čitaju se artikli sa statusom ${clrStatuses().join(' i ')} koji su na zalihi u grupi Kućanstvo.</p>`;
+    return;
+  }
+  const n = (s) => c.list.filter((x) => x.st === s).length;
+  if (S.clr.st !== 'all' && !c.st.includes(S.clr.st)) S.clr.st = 'all';
+  const sts = [['all', `Svi (${c.list.length})`], ...c.st.map((k) => [k, `${k} (${n(k)})`])];
+  const sorts = [['stock', 'Zaliha'], ['value', 'Vrijednost'], ['new', 'Novi status']];
+  body.innerHTML = `<div class="clr-sum" id="clrSum"></div>
+    <div class="clr-tools">
+      <div class="seg seg-sm" role="radiogroup" aria-label="Status">${sts.map(([v, t]) => `<button class="seg-btn" type="button" role="radio" aria-checked="${S.clr.st === v}" data-clr-st="${v}">${t}</button>`).join('')}</div>
+      <form class="search" id="clrForm" role="search" autocomplete="off">
+        <svg class="ico search-ico" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="clrQ" type="search" inputmode="search" enterkeyhint="search" placeholder="Šifra ili naziv artikla" aria-label="Traži u listi" spellcheck="false" autocapitalize="off" autocorrect="off" value="${esc(S.clr.q)}">
+      </form>
+      <div class="clr-sort"><span>Poredaj:</span>${sorts.map(([v, t]) => `<button class="chip" type="button" aria-pressed="${S.clr.sort === v}" data-clr-sort="${v}">${t}</button>`).join('')}</div>
+    </div>
+    <div id="clrList"></div><p class="clr-note" id="clrNote"></p>`;
+  $('#clrQ').addEventListener('input', (e) => { S.clr.q = e.target.value; renderClearList(); });
+  $('#clrForm').addEventListener('submit', (e) => { e.preventDefault(); $('#clrQ').blur(); });
+  renderClearList();
+}
+
+window.onClearance = (r) => {
+  if (!r || r.how === 'cancelled') return;
+  const prev = S.user.clear;
+  const want = clrStatuses();
+  const got = {};
+  const limited = [];
+  for (const p of Array.isArray(r.parts) ? r.parts : []) {
+    if (!/^\d{2}$/.test(p.st) || !want.includes(p.st)) continue;
+    if (p.limited) { limited.push(p.st); continue; }
+    got[p.st] = core.parseArticleRows(p.text, p.st);
+  }
+  if (!Object.keys(got).length) {
+    toast(limited.length ? `StoreFront: za status ${limited.join(' i ')} ima previše rezultata.` : 'Nisam uspio pročitati artikle. Provjeri prijavu u StoreFront.');
+    return;
+  }
+  // a status that was read replaces its old rows; one that could not be read keeps what was there
+  const list = [];
+  for (const st of want) list.push(...(got[st] || (prev && prev.list ? prev.list.filter((x) => x.st === st) : [])));
+  S.user.clear = { at: r.at || Date.now(), st: want, group: r.group || cfg().group, list, limited };
+  saveUser();
+  const partial = r.how !== 'ok' || limited.length;
+  toast(partial ? 'Lista je učitana samo djelimično.' : `Učitano: ${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}`);
+  if (top().id === 'clearance') renderClearance();
+  renderClearBar();
+};
+
 // ----------------------------------------------------------------- settings
 
 const DEFAULTS = {
@@ -344,9 +480,11 @@ const DEFAULTS = {
   theme: 'auto', // auto = follows the phone, or light / dark
   autoref: true, // when StoreFront shows different order numbers, read the new orders by itself
   watch: false, // look at the order numbers in the background and send a notification
+  clr: { 21: true, 81: true }, // statuses on the list of articles to sell
+  group: '5', // product group of that list (5 = the department's own)
   upd: true, // look for a new version of the app when it is opened
 };
-const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) } });
+const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) }, clr: { ...DEFAULTS.clr, ...((S.user.settings || {}).clr || {}) } });
 function setCfg(patch) {
   S.user.settings = { ...(S.user.settings || {}), ...patch };
   saveUser();
@@ -386,6 +524,13 @@ function renderSettings() {
     ${act('orders-clear', 'Obriši narudžbe s telefona', 'Imena, telefoni i artikli se brišu s ovog telefona', true)}
   </div></section>
 
+  <section class="set-block"><h3>Za rasprodaju</h3><div class="set-card">
+    <div class="set-row set-col"><div class="set-txt"><b>Koji statusi</b><small>Artikli s ovim statusom koji su na zalihi u prodavnici (grupa Kućanstvo)</small></div>
+      <div class="chips">${CLR_ST.map((k) => `<button class="chip" type="button" role="checkbox" aria-checked="${c.clr[k]}" data-cst="${k}">Status ${k}</button>`).join('')}</div></div>
+    ${act('clear-refresh', 'Učitaj listu sada', S.user.clear && S.user.clear.list ? `${S.user.clear.list.length} artikala, ${esc(ageText(S.user.clear.at))}` : 'Još nije učitana')}
+    ${act('clear-clear', 'Obriši listu s telefona', '', true)}
+  </div></section>
+
   <section class="set-block"><h3>Podaci</h3><div class="set-card">
     ${act('plans', 'Planogrami', `${S.plans.length} na telefonu`)}
     ${act('recent', 'Obriši zadnje traženo', `${S.user.recent.length} artikala`, true)}
@@ -412,6 +557,10 @@ function onSettingsClick(t) {
     const k = t.dataset.choice;
     setCfg({ [k]: k === 'stale' ? +t.dataset.v : t.dataset.v });
     if (k === 'theme') applyTheme();
+  } else if (t.dataset.cst) {
+    const clr = { ...cfg().clr, [t.dataset.cst]: !cfg().clr[t.dataset.cst] };
+    if (!Object.values(clr).some(Boolean)) { toast('Bar jedan status mora biti uključen.'); return; }
+    setCfg({ clr });
   } else if (t.dataset.tab) {
     const tabs = { ...cfg().tabs, [t.dataset.tab]: !cfg().tabs[t.dataset.tab] };
     if (!Object.values(tabs).some(Boolean)) { toast('Bar jedna kartica mora biti uključena.'); return; }
@@ -420,6 +569,8 @@ function onSettingsClick(t) {
     const a = t.dataset.act;
     if (a === 'plans') { renderPlans(); go('plans'); return; }
     if (a === 'orders-refresh') { refreshOrders(); return; }
+    if (a === 'clear-refresh') { refreshClearance(); return; }
+    if (a === 'clear-clear') { S.user.clear = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
     if (a === 'upd-check') { checkUpdate(true); toast('Tražim novu verziju…'); return; }
     if (a === 'upd-install') { installUpdate(); return; }
@@ -593,6 +744,7 @@ function renderHome() {
   const recent = S.user.recent.filter((r) => S.index.byNum.has(r.num));
   $('#recent').innerHTML = recent.length ? `<div class="list">${recent.map((r) => itemRow(r.num)).join('')}</div>` : '';
   renderOrdersBar();
+  renderClearBar();
   $('#recentEmpty').hidden = recent.length > 0;
   $('#recentHead').hidden = recent.length === 0;
   for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
@@ -1667,6 +1819,7 @@ const viewer = (() => {
 
 function bind() {
   $('#openPlans').addEventListener('click', () => { renderPlans(); go('plans'); });
+  $('#clearRefresh').addEventListener('click', () => refreshClearance());
   $('#openSettings').addEventListener('click', () => { renderSettings(); go('settings'); });
   $('#welcomeAdd').addEventListener('click', () => addPlanograms());
   $('#scanBtn').addEventListener('click', startScan);
@@ -1696,10 +1849,13 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],#ordersBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
-    if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab) { onSettingsClick(t); return; }
+    if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
+    if (t.id === 'clearBar') { openClearance(); return; }
+    if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
+    if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
     if (t.id === 'updateBar') { installUpdate(); return; }
     if (t.dataset.mode) { setMode(t.dataset.mode); return; }
     if (t.dataset.oq) { $('#q').value = t.dataset.oq; runOrdersSearch(); return; }

@@ -1130,4 +1130,42 @@ export function sharedSections(oldPlan, newPlan) {
 }
 
 /** For tests and debugging. */
+/**
+ * Rows of StoreFront's article table (tab-separated): "3815501 (21)", name, free stock, store stock, price,
+ * regular price, DD date, date of the last status change. Anything that does not look like a row is skipped.
+ */
+export function parseArticleRows(text, wantStatus = null) {
+  const out = [];
+  const qty = (s) => {
+    const m = /^(-?\d+(?:[.,]\d+)?)\s*(\S*)$/.exec(String(s || '').trim());
+    return m ? { n: +m[1].replace(',', '.'), u: m[2].slice(0, 6) } : { n: 0, u: '' };
+  };
+  const money = (s) => {
+    const m = /^(-?\d+(?:[.,]\d+)?)/.exec(String(s || '').trim());
+    return m ? +m[1].replace(',', '.') : null;
+  };
+  for (const line of String(text || '').split('\n')) {
+    const c = line.split('\t');
+    const m = /^(\d{7}) \((\d{1,2})\)$/.exec((c[0] || '').trim());
+    if (!m || c.length < 6) continue;
+    if (wantStatus && m[2] !== wantStatus) continue;
+    const free = qty(c[2]);
+    const store = qty(c[3]);
+    out.push({
+      num: m[1], st: m[2], name: (c[1] || '').trim().slice(0, 90),
+      free: free.n, stock: store.n, unit: store.u || free.u,
+      price: money(c[4]), reg: money(c[5]),
+      dd: /^\d{2}-\d{2}-\d{4}$/.test((c[6] || '').trim()) ? c[6].trim() : '',
+      chg: /^\d{2}-\d{2}-\d{4}$/.test((c[7] || '').trim()) ? c[7].trim() : '',
+    });
+  }
+  return out;
+}
+
+/** "dd-mm-yyyy" as a number that sorts by date (0 when it is not a date). */
+export function dateKey(s) {
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || ''));
+  return m ? +m[3] * 10000 + +m[2] * 100 + +m[1] : 0;
+}
+
 export const _internals = { glyphRun, buildLines, findTable, readTable, buildBlocks, readLabel };

@@ -28,6 +28,7 @@
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></symbol>
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5V9h-4.5"/></symbol>
   <symbol id="i-fit" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M16 10v4"/></symbol>
 </svg>
 
@@ -63,6 +64,7 @@
     <button class="update-bar" id="updateBar" type="button" hidden></button>
 
     <button class="orders-bar" id="ordersBar" type="button" hidden></button>
+    <button class="orders-bar" id="clearBar" type="button" hidden></button>
 
     <div id="results" hidden></div>
 
@@ -148,6 +150,16 @@
     <span class="top-title">Planogrami</span>
   </header>
   <div class="scroll" id="plansBody"></div>
+</section>
+
+<!-- Articles that have to be sold (status 21 and 81, in stock) -->
+<section id="clearance" class="screen" aria-label="Za rasprodaju">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">Za rasprodaju</span>
+    <button class="round-btn" type="button" id="clearRefresh" aria-label="Osvježi listu"><svg class="ico"><use href="#i-refresh"/></svg></button>
+  </header>
+  <div class="scroll" id="clearBody"></div>
 </section>
 
 <!-- Settings -->
