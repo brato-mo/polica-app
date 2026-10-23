@@ -222,7 +222,7 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
         title.setGravity(Gravity.CENTER);
         p.addView(title);
         TextView body = new TextView(this);
-        body.setText("Dozvoli pristup kameri da bi Polica mogla čitati barkodove. Slike se ne spremaju i ne šalju nikome.");
+        body.setText("Dozvoli pristup kameri radi čitanja barkodova. Slike se ne spremaju i ne šalju nikome.");
         body.setTextColor(0xCCFFFFFF);
         body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         body.setGravity(Gravity.CENTER);

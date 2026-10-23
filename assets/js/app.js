@@ -1,4 +1,4 @@
-// Polica: scan or type an article, see its picture and where it stands on the shelf.
+// @APP@: scan or type an article, see its picture and where it stands on the shelf.
 import * as core from './core.js';
 import * as store from './store.js';
 import * as docs from './docs.js';
@@ -275,7 +275,7 @@ function renderUpdate() {
   const nm = esc(u.name || '');
   b.dataset.state = u.state;
   if (u.state === 'downloading') b.innerHTML = `<span class="work-dot"></span><span><b>Preuzimam novu verziju ${nm}</b><small>${u.pct || 0}%</small></span>`;
-  else if (u.state === 'permission') b.innerHTML = `${icon('info')}<span><b>Dozvoli instalaciju</b><small>Uključi „Dozvoli iz ovog izvora“ pa se vrati u Policu i tapni opet</small></span><span class="go">Instaliraj</span>`;
+  else if (u.state === 'permission') b.innerHTML = `${icon('info')}<span><b>Dozvoli instalaciju</b><small>Uključi „Dozvoli iz ovog izvora“ pa se vrati u @APP@ i tapni opet</small></span><span class="go">Instaliraj</span>`;
   else b.innerHTML = `${icon('info')}<span><b>Nova verzija ${nm} je ${u.state === 'ready' ? 'spremna' : 'dostupna'}</b>${u.notes ? `<small>${esc(String(u.notes).split('\n')[0])}</small>` : ''}</span><span class="go">${u.state === 'ready' ? 'Instaliraj' : 'Preuzmi'}</span>`;
 }
 
@@ -379,7 +379,7 @@ function renderSettings() {
       <div class="chips">${tabNames.map(([k, t]) => `<button class="chip" type="button" role="checkbox" aria-checked="${c.tabs[k]}" data-tab="${k}">${t}</button>`).join('')}</div></div>
     ${sw('name', 'Prikaži ime kupca', '', c.name)}
     ${sw('phone', 'Prikaži telefon kupca', '', c.phone)}
-    ${sw('autoref', 'Sam učitaj nove narudžbe', 'Kad se otvori Polica i StoreFront pokaže drugačije brojeve, nove narudžbe se same pročitaju (bez dodira)', c.autoref)}
+    ${sw('autoref', 'Sam učitaj nove narudžbe', 'Kad se otvori @APP@ i StoreFront pokaže drugačije brojeve, nove narudžbe se same pročitaju (bez dodira)', c.autoref)}
     ${sw('watch', 'Obavijest o novim narudžbama', 'Svakih pola sata u pozadini (7–21 h) gleda brojeve u StoreFrontu i javi obavijest. Android može odgoditi provjeru, a radi samo dok si prijavljen.', c.watch)}
     ${choice('stale', 'Upozori da su podaci stari nakon', [[6, '6 h'], [12, '12 h'], [24, '24 h']], c.stale)}
     ${act('orders-refresh', 'Osvježi narudžbe sada', o ? `${o.list.length} narudžbi, ${esc(ageText(o.at))}` : 'Još nisu učitane')}
@@ -394,7 +394,7 @@ function renderSettings() {
   </div></section>
 
   <section class="set-block"><h3>O aplikaciji</h3><div class="set-card">
-    <div class="set-row"><div class="set-txt"><b>Polica</b><small>Verzija ${esc(A.version())} · ${esc(A.device())}</small></div></div>
+    <div class="set-row"><div class="set-txt"><b>@APP@</b><small>Verzija ${esc(A.version())} · ${esc(A.device())}</small></div></div>
     ${sw('upd', 'Provjeri nove verzije pri otvaranju', 'Nova verzija se sama preuzme, a ti samo potvrdiš instalaciju', c.upd)}
     ${S.update && S.update.state === 'ready' ? act('upd-install', `Instaliraj verziju ${esc(S.update.name || '')}`, 'Spremna je za instalaciju')
       : S.update && S.update.state === 'downloading' ? `<div class="set-row"><div class="set-txt"><b>Preuzimam ${esc(S.update.name || '')}</b><small>${S.update.pct || 0}%</small></div></div>`
@@ -541,7 +541,7 @@ function renderOrdersBar() {
   const o = S.user.orders;
   const ic = icon('info');
   if (!o) {
-    b.innerHTML = `${ic}<span><b>Narudžbe kupaca</b><small>Učitaj iz StoreFronta, pa Polica javi kad je artikal naručen</small></span><span class="go">Učitaj</span>`;
+    b.innerHTML = `${ic}<span><b>Narudžbe kupaca</b><small>Učitaj iz StoreFronta, pa @APP@ javi kad je artikal naručen</small></span><span class="go">Učitaj</span>`;
   } else {
     const c = (t) => o.list.filter((x) => x.tab === t).length;
     const df = siteDiff();
@@ -886,7 +886,7 @@ function renderMissing(code) {
   $('#missingBody').innerHTML = `<div class="missing">
     <div class="missing-ico">${icon('link')}</div>
     <h2>Poveži ovaj barkod</h2>
-    <p>Barkod na proizvodu ne sadrži šifru artikla. Poveži ga jednom i od tada ga Polica odmah prepozna.</p>
+    <p>Barkod na proizvodu ne sadrži šifru artikla. Poveži ga jednom i od tada ga @APP@ odmah prepozna.</p>
     <span class="code-big">${esc(code)}</span>
   </div>
   <section class="block">
@@ -1174,8 +1174,8 @@ window.onPicked = (list) => {
   queue.push({ list, target: S.importTarget });
   S.importTarget = null;
   if (S.busy) {
-    if (S.refreshing) progress('Uvoz čeka', 0, 'Polica završava slike za stari planogram i odmah nastavlja.');
-    else toast('PDF čeka na red, Polica ga čita odmah poslije ovog.');
+    if (S.refreshing) progress('Uvoz čeka', 0, '@APP@ završava slike za stari planogram i odmah nastavlja.');
+    else toast('PDF čeka na red, @APP@ ga čita odmah poslije ovog.');
     return;
   }
   drainImports();
@@ -1363,7 +1363,7 @@ function renderPlans() {
   const body = $('#plansBody');
   let h = `<div class="plans-top">
     <button class="btn btn-primary btn-block" type="button" data-add>${icon('plus')}Dodaj planograme</button>
-    <p class="hint">Kad stigne novi planogram, samo ga dodaj. Polica prepozna isti odjel, zamijeni stari i pokaže šta se promijenilo.</p>
+    <p class="hint">Kad stigne novi planogram, samo ga dodaj. @APP@ prepozna isti odjel, zamijeni stari i pokaže šta se promijenilo.</p>
   </div>`;
   if (!S.plans.length) h += '<p class="empty">Još nema planograma.</p>';
   const sorted = S.plans.slice().sort((a, b) => a.title.localeCompare(b.title, 'bs'));

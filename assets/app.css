@@ -1,4 +1,4 @@
-/* Polica: photo-first shelf finder. Calm surfaces, product pictures, and one strong
+/* @APP@: photo-first shelf finder. Calm surfaces, product pictures, and one strong
    element: the location card with the module, shelf and notch. */
 
 @font-face {
@@ -190,9 +190,11 @@ svg { display: block; }
   gap: 12px;
   padding: 18px 0 16px;
 }
+.home-title { min-width: 0; }
+.ttl-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
 .home-title h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: clamp(26px, 8vw, 34px);
   line-height: 1.05;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -964,7 +966,7 @@ svg { display: block; }
 .update-bar .ico { width: 22px; height: 22px; flex: none; }
 .update-bar .work-dot { width: 18px; height: 18px; border-radius: 9px; border: 3px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; animation: spin 0.9s linear infinite; flex: none; }
 
-.onl { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0; vertical-align: middle; }
+.onl { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; letter-spacing: 0; vertical-align: middle; }
 .onl::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .onl.is-on { color: #1f9d55; }
 .onl.is-off { color: #d93a2f; }

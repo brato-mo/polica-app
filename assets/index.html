@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; connect-src 'self' blob: data:; worker-src 'self' blob:">
-<title>Polica</title>
+<title>@APP@</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -36,7 +36,7 @@
   <div class="scroll home-scroll">
     <header class="home-head">
       <div class="home-title">
-        <h1>Polica <span class="onl" id="onl" hidden></span></h1>
+        <div class="ttl-row"><h1>@APP@</h1><span class="onl" id="onl" hidden></span></div>
         <p id="homeStats"></p>
         <p class="work-line" id="workLine" hidden><i></i><span></span></p>
       </div>
@@ -75,7 +75,7 @@
       <div class="tips" id="recentEmpty">
         <div class="tip">
           <span class="tip-ico"><svg class="ico"><use href="#i-scan"/></svg></span>
-          <div><b>Skeniraj barkod</b><p>Polica odmah pokaže modul, policu i notch, i označi artikal na planogramu.</p></div>
+          <div><b>Skeniraj barkod</b><p>@APP@ odmah pokaže modul, policu i notch, i označi artikal na planogramu.</p></div>
         </div>
         <div class="tip">
           <span class="tip-ico"><svg class="ico"><use href="#i-search"/></svg></span>
@@ -105,9 +105,9 @@
       </div>
       <h2>Prvo dodaj planograme</h2>
       <p>Izaberi PDF planograme na telefonu. Možeš ih označiti sve odjednom.</p>
-      <p>Kad stigne novi planogram za isti odjel, dodaj ga na isti način i Polica sama zamijeni stari.</p>
+      <p>Kad stigne novi planogram za isti odjel, dodaj ga na isti način i stari će se zamijeniti automatski.</p>
       <button class="btn btn-primary btn-block" id="welcomeAdd" type="button"><svg class="ico"><use href="#i-plus"/></svg>Dodaj planograme</button>
-      <p class="hint">PDF iz maila ili Teamsa možeš i podijeliti direktno u Policu.</p>
+      <p class="hint">PDF iz maila ili Teamsa možeš i podijeliti direktno u @APP@.</p>
     </div>
   </div>
 

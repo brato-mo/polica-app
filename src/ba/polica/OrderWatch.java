@@ -112,7 +112,7 @@ public class OrderWatch extends JobService {
         Notification n = new Notification.Builder(this, CH)
             .setSmallIcon(R.drawable.ic_mono)
             .setContentTitle("Ima promjena u narudžbama kupaca")
-            .setContentText(d + ". Otvori Policu i osvježi.")
+            .setContentText(d + ". Otvori " + getString(R.string.app_name) + " i osvježi.")
             .setContentIntent(pi)
             .setAutoCancel(true)
             .build();

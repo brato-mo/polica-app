@@ -17,17 +17,38 @@ echo "1/5 resources"
 # keystore/, never published) and the place the app looks for updates (update-repo.txt)
 HOSTNAME="$(tr -d ' \r\n' < keystore/host.txt | rev)"
 UPDATE_REPO="$(tr -d ' \r\n' < update-repo.txt)"
+# the name the app shows (launcher, title, texts): private file keystore/appname.txt; without it the neutral name
+APPNAME="Polica"
+if [ -s keystore/appname.txt ]; then APPNAME="$(tr -d '\r\n' < keystore/appname.txt)"; fi
+case "$APPNAME" in *[\<\>\&\'\"\`\$\\]*) echo "app name must not contain < > & ' \" \` $ \\"; exit 1;; esac
 mkdir -p build/res-gen/values
 cat > build/res-gen/values/config.xml <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="storefront_host" translatable="false">$HOSTNAME</string>
     <string name="update_repo" translatable="false">$UPDATE_REPO</string>
+    <string name="app_name">$APPNAME</string>
+    <string name="import_label">Dodaj u $APPNAME</string>
 </resources>
 XML
+# the pages carry the token @APP@ where the name goes; the copy that is packed has the real name
+cp -r assets build/assets-gen
+python3 - "$APPNAME" <<'PY'
+import os, sys
+name = sys.argv[1]
+for root, _, files in os.walk('build/assets-gen'):
+    if 'vendor' in root.split(os.sep):
+        continue
+    for f in files:
+        if f.endswith(('.html', '.js', '.css')):
+            p = os.path.join(root, f)
+            s = open(p, encoding='utf-8').read()
+            if '@APP@' in s:
+                open(p, 'w', encoding='utf-8').write(s.replace('@APP@', name))
+PY
 "$T/aapt2" compile --dir res -o build/res.zip
 "$T/aapt2" compile --dir build/res-gen -o build/res-gen.zip
-"$T/aapt2" link -o build/app-unsigned.apk -I "$AJAR" --manifest AndroidManifest.xml -A assets \
+"$T/aapt2" link -o build/app-unsigned.apk -I "$AJAR" --manifest AndroidManifest.xml -A build/assets-gen \
   --min-sdk-version 26 --target-sdk-version 34 \
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   -0 woff -0 wasm -0 pdf \

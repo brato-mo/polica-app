@@ -1,7 +1,7 @@
 {
- "code": 17,
- "name": "1.16",
- "notes": "Brza provjera brojeva narudžbi, samo učitavanje novih i obavijest u pozadini",
+ "code": 18,
+ "name": "1.17",
+ "notes": "Novo ime aplikacije",
  "size": 1859561,
- "sha256": "24e5b9c8a0f0551b497027708c4a8c32577b097cf6806b15ac2778e71074c0d9"
+ "sha256": "1aa584222c878f1972ce2f3bacc4e1796504eee670f5b2041da487a886cf22c1"
 }
