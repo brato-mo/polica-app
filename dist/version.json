@@ -1,7 +1,7 @@
 {
- "code": 26,
- "name": "1.25",
- "notes": "Čitanje narudžbi kupaca nastavlja i kad je telefon zaključan (obavijest u gornjoj traci)",
+ "code": 27,
+ "name": "1.26",
+ "notes": "EAN: artikal se ne otvara po 7-cifrenom dijelu EAN/EAN-13 barkoda",
  "size": 1880113,
- "sha256": "6c5c236adc4b74a435f4ee6f03d509b46c13adaab888474e4b0d62428a5c868c"
+ "sha256": "e2d45e4d97705e9d0bfae285f9b2159d111bc8e65c30bc50231ad086c2df49c2"
 }
