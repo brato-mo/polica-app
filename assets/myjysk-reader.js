@@ -44,7 +44,8 @@
   function concept() {
     return get('/searchapi/search?type=kbarticle&topicfacets=auto&kbaseid=' + KB + '&limit=200&start=0&q=').then(function (r) {
       var list = (r.results || []).map(function (a) {
-        return { id: s(a.objectId || a.id, 14), title: s(a.title, 160), dept: s(a.articleTopicName, 60), upd: s(a.dateUpdated || a.lastPublishedDate, 19), path: /^\/ui\/knowledge-bases\/\d+\/topics\/\d+\/articles\/\d+$/.test(a.url || '') ? a.url : '' };
+        var id = s(a.objectId || a.id, 14), kb = +a.articleKbaseId || KB, topic = +a.articleTopicId;
+        return { id: id, title: s(a.title, 160), dept: s(a.articleTopicName, 60), upd: s(a.dateUpdated || a.lastPublishedDate, 19), path: topic && /^\d+$/.test(id) ? '/ui/knowledge-bases/' + kb + '/topics/' + topic + '/articles/' + id : '' };
       });
       var want = list.filter(function (a) { return /^\s*[23]\)/.test(a.title); });
       return Promise.all(want.map(function (a) {

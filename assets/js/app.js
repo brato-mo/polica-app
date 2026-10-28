@@ -983,7 +983,14 @@ function impRow(x) {
     : x.path ? `<button class="text-btn" type="button" data-mj-open="${esc(x.path)}">Otvori u MYJYSK</button>` : '';
   return `<div class="mj-news${x.kind === 'sys' ? ' is-sys' : ''}"><button class="mj-row" type="button" data-mj-x="${esc(x.id)}" aria-expanded="${open}">
     <span class="mj-main"><span class="mj-title">${x.fresh ? '<span class="mj-new">NOVO</span>' : ''}${esc(x.title)}</span><span class="mj-meta">${esc(meta)}${mine ? ' · <b class="mj-mine">tvoj odjel</b>' : ''}</span></span>
-  </button>${open ? `<div class="mj-text">${esc(x.text) || ''}${go ? `${x.text ? '<br>' : ''}${go}` : ''}</div>` : ''}</div>`;
+  </button>${open ? `<div class="mj-text">${esc(x.text) || esc(impHint(x))}${go ? `<br>${go}` : ''}</div>` : ''}</div>`;
+}
+
+/** What to say when an entry has no text of its own. */
+function impHint(x) {
+  if (x.kind === 'concept') return `Koncept je ažuriran ${news.dayText(x.date)}. Šta je tačno novo, piše u članku.`;
+  if (x.kind === 'plan') return 'Planogram je preuzet i zamijenio stari.';
+  return 'Više detalja je u članku.';
 }
 
 function impSection(st) {

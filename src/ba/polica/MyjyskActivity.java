@@ -37,7 +37,7 @@ public class MyjyskActivity extends Activity {
     static final String EXTRA_PATH = "path";
     static final String EXTRA_JSON = "json";
     static final String EXTRA_URL = "url";
-    private static final Pattern SAFE_PATH = Pattern.compile("/ui/(tasks/[a-z]+|news/articles)/\\d{1,14}");
+    private static final Pattern SAFE_PATH = Pattern.compile("/ui/(tasks/[a-z]+|news/articles|knowledge-bases/\\d{1,6}/topics/\\d{1,8}/articles)/\\d{1,14}");
     private static final long POLL_MS = 900;
 
     private MyjyskReader reader;

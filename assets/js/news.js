@@ -123,7 +123,9 @@ export function updateEntries(u, max = 3) {
     let lines = body.split('\n').map((x) => x.trim()).filter(Boolean);
     if (!lines.length) continue;
     const id = `u:${u.id}:${hash(lines.join(' ').slice(0, 300))}`;
-    if (lines.length > 1 && /:\s*$/.test(lines[0])) lines = [`${lines[0].replace(/:\s*$/, '')}: ${lines[1]}`, ...lines.slice(2)];
+    if (/^(trenutno )?nema (novih )?ažuriranja/i.test(lines[0])) continue; // "nothing new" is not news
+    // a heading on its own line ("Sljedeći dijelovi su ažurirani:", "Samo XL trgovine") goes together with the next line
+    if (lines.length > 1 && (/:\s*$/.test(lines[0]) || lines[0].length < 30)) lines = [`${lines[0].replace(/:\s*$/, '')}: ${lines[1]}`, ...lines.slice(2)];
     out.push({
       id, kind: 'upd', dept: u.dept, path: u.path, dated: !!m,
       date: m ? isoDate(m[1], m[2], m[3]) : '',
