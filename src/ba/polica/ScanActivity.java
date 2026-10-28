@@ -628,7 +628,7 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
         public void run() {
             try {
                 Result res = decodeFrame();
-                if (res != null) found(res);
+                if (res != null && confirmed(res)) found(res);
             } catch (Throwable t) {
                 Log.w(TAG, "decode", t);
             } finally {
@@ -636,6 +636,38 @@ public class ScanActivity extends Activity implements TextureView.SurfaceTexture
             }
         }
     };
+
+    // A single read is not trusted: noise (fabric, wood grain, print) now and then decodes as a short barcode whose
+    // check digit happens to fit. A real barcode reads the same on the next frames, noise does not.
+    private String lastCode;
+    private int hits;
+    private long lastAt;
+
+    static int readsNeeded(BarcodeFormat f) {
+        switch (f) {
+            case QR_CODE:
+            case DATA_MATRIX:
+                return 1; // strong error correction
+            case EAN_13:
+            case UPC_A:
+            case CODE_128:
+                return 2;
+            default:
+                return 3; // EAN-8, UPC-E, ITF, Code 39/93, Codabar: weak or no check
+        }
+    }
+
+    private boolean confirmed(Result res) {
+        String key = res.getBarcodeFormat() + ":" + res.getText();
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (key.equals(lastCode) && now - lastAt < 1500) hits++;
+        else {
+            lastCode = key;
+            hits = 1;
+        }
+        lastAt = now;
+        return hits >= readsNeeded(res.getBarcodeFormat());
+    }
 
     private Result tryDecode(byte[] data, int w, int h) {
         PlanarYUVLuminanceSource src = new PlanarYUVLuminanceSource(data, w, h, 0, 0, w, h, false);

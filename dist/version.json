@@ -1,7 +1,7 @@
 {
- "code": 27,
- "name": "1.26",
- "notes": "EAN: artikal se ne otvara po 7-cifrenom dijelu EAN/EAN-13 barkoda",
+ "code": 28,
+ "name": "1.27",
+ "notes": "Skener više ne čita lažne barkodove sa tkanine i šara: kod mora biti isto pročitan više puta",
  "size": 1880113,
- "sha256": "e2d45e4d97705e9d0bfae285f9b2159d111bc8e65c30bc50231ad086c2df49c2"
+ "sha256": "bede6cece759ff2c938cb3bd978b421f7b1b987a91a2bc99e86cfd1195ca0714"
 }
