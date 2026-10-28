@@ -2,6 +2,7 @@
 import * as core from './core.js';
 import * as store from './store.js';
 import * as docs from './docs.js';
+import * as news from './news.js';
 
 const A = window.Android;
 const $ = (s, el = document) => el.querySelector(s);
@@ -18,7 +19,8 @@ const S = {
   refreshing: false,
   tried: new Set(), // barcodes already asked in StoreFront this session
   storeCb: null,
-  mode: 'plan', // home search: 'plan' (planograms) or 'orders' (customer orders)
+  mode: 'plan', // home tab: 'plan' (planograms), 'orders' (customer orders) or 'news' (MYJYSK tasks and news)
+  mj: { busy: false, open: new Set(), loc: 'open', more: false }, // Vijesti screen: reading now, opened news, filter of the store's tasks
   planMore: new Set(), // "<plan id>|<status>": cards whose whole row of article numbers is open on the Planogrami screen
 };
 
@@ -551,6 +553,8 @@ const DEFAULTS = {
   noxmas: true, // leave Christmas and New Year articles out of that list
   xmas: core.XMAS_WORDS, // the words that make a name a Christmas / New Year one
   upd: true, // look for a new version of the app when it is opened
+  mj: true, // read MYJYSK every morning at 8:00 and send a notification when there is something new
+  mjMe: null, // who the employee is in MYJYSK (names, numbers, comma between); null = what the build says
 };
 const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) }, clr: { ...DEFAULTS.clr, ...((S.user.settings || {}).clr || {}) } });
 function setCfg(patch) {
@@ -575,7 +579,7 @@ function renderSettings() {
   </div></section>
 
   <section class="set-block"><h3>Pretraga i skeniranje</h3><div class="set-card">
-    ${choice('mode', 'Pretraga pri otvaranju', [['plan', 'Planogrami'], ['orders', 'Narudžbe']], c.mode)}
+    ${choice('mode', 'Pri otvaranju', mjOn() ? [['plan', 'Planogrami'], ['orders', 'Narudžbe'], ['news', 'Vijesti']] : [['plan', 'Planogrami'], ['orders', 'Narudžbe']], c.mode)}
     ${sw('vib', 'Vibracija pri skeniranju', 'Kratka vibracija kad se barkod pročita', c.vib)}
     ${sw('auto', 'StoreFront traži nepoznate barkodove', 'Kad barkod nije poznat, sam se pita StoreFront (bez dodira dugmeta)', c.auto)}
   </div></section>
@@ -602,6 +606,14 @@ function renderSettings() {
     ${act('clear-clear', 'Obriši listu s telefona', '', true)}
   </div></section>
 
+  ${mjOn() ? `<section class="set-block"><h3>Vijesti (MYJYSK)</h3><div class="set-card">
+    ${sw('mj', 'Svako jutro u 8:00', 'Zadaci i vijesti iz MYJYSK se sami učitaju, a obavijest dođe kad ima nešto novo. Android može pomjeriti za koju minutu. Radi dok si prijavljen u MYJYSK.', c.mj)}
+    <div class="set-row set-col"><div class="set-txt"><b>Ja u MYJYSK</b><small>Ime i prezime ili broj, odvojeno zarezom. Zadaci na kojima piše ovo idu pod „Za mene“, kao i zadaci za Store Staff i sve uloge.</small></div>
+      <input class="set-input" id="mjMe" type="text" value="${esc(mjMe())}" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Ja u MYJYSK"></div>
+    ${act('mj-refresh', 'Osvježi sada', S.user.mj && S.user.mj.at ? `Stanje ${esc(ageText(S.user.mj.at))}` : 'Još nije učitano')}
+    ${act('mj-clear', 'Obriši vijesti i zadatke s telefona', '', true)}
+  </div></section>` : ''}
+
   <section class="set-block"><h3>Podaci</h3><div class="set-card">
     ${act('plans', 'Planogrami', `${S.plans.length} na telefonu`)}
     ${act('recent', 'Obriši zadnje traženo', `${S.user.recent.length} artikala`, true)}
@@ -624,6 +636,7 @@ function onSettingsClick(t) {
     const k = t.dataset.set;
     setCfg({ [k]: !cfg()[k] });
     if (k === 'watch') syncWatch(true);
+    if (k === 'mj') syncMyjysk(true);
   } else if (t.dataset.choice) {
     const k = t.dataset.choice;
     setCfg({ [k]: k === 'stale' ? +t.dataset.v : t.dataset.v });
@@ -641,6 +654,8 @@ function onSettingsClick(t) {
     if (a === 'plans') { renderPlans(); go('plans'); return; }
     if (a === 'orders-refresh') { refreshOrders(); return; }
     if (a === 'clear-refresh') { refreshClearance(); return; }
+    if (a === 'mj-refresh') { refreshMyjysk(false); toast('Učitavam iz MYJYSK…'); return; }
+    if (a === 'mj-clear') { S.user.mj = null; saveUser(); store.remove(MJ_FILE); toast('Vijesti i zadaci su obrisani s telefona.'); }
     if (a === 'clear-clear') { S.user.clear = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
     if (a === 'upd-check') { checkUpdate(true); toast('Tražim novu verziju…'); return; }
@@ -726,9 +741,11 @@ function runOrdersSearch() {
 }
 
 function setMode(m) {
+  if (S.mode === 'news' && m !== 'news') seenNews();
   S.mode = m;
   $('#q').value = '';
   renderHome();
+  if (m === 'news') freshenMyjysk();
 }
 
 function refreshOrders() {
@@ -793,6 +810,154 @@ function itemRow(num, { attr = 'data-num', sub = '' } = {}) {
   </button>`;
 }
 
+// ------------------------------------------------------- Vijesti (MYJYSK)
+
+const MJ_FILE = 'myjysk-in.json'; // the last read, also written by the 8:00 job of the phone
+const mjOn = () => { try { return !!(A.myjyskOn && A.myjyskOn()); } catch (e) { return false; } };
+const mjMe = () => {
+  const c = cfg().mjMe;
+  if (c != null) return c;
+  try { return (A.myjyskMe && A.myjyskMe()) || ''; } catch (e) { return ''; }
+};
+const syncMyjysk = (ask) => { try { if (mjOn() && A.myjyskDaily) A.myjyskDaily(!!cfg().mj, !!ask); } catch (e) { /* older shell */ } };
+
+/** Something new for the employee since he last looked at Vijesti (a red dot on the tab). */
+function newsWaiting() {
+  const st = S.user.mj;
+  if (!st || !st.at) return false;
+  return news.myTasks(st, mjMe()).some((t) => news.isNew(st, t.id)) || st.news.some((a) => news.isNew(st, a.id)) || st.sys.some((a) => news.isNew(st, a.id));
+}
+
+function seenNews() {
+  if (!S.user.mj) return;
+  S.user.mj.viewedAt = Date.now();
+  saveUser();
+}
+
+function takeMyjysk(r) {
+  if (!r || r.how !== 'ok' || !r.data) return false;
+  const at = +r.at || Date.now();
+  if (S.user.mj && S.user.mj.at >= at) return false;
+  S.user.mj = news.merge(S.user.mj, r.data, at);
+  saveUser();
+  return true;
+}
+
+/** What the 8:00 job read while the app was closed. */
+function pickupMyjysk() {
+  if (!mjOn()) return;
+  const r = store.read(MJ_FILE, null);
+  if (!r) return;
+  if (r.how === 'login' && (!S.user.mj || !S.user.mj.at || r.at > S.user.mj.at)) {
+    if (S.user.mj) { S.user.mj.login = true; saveUser(); }
+    else S.user.mj = { at: 0, my: [], loc: [], news: [], sys: [], seen: {}, login: true };
+  }
+  takeMyjysk(r);
+}
+
+/** Reads again when the kept data is from before this morning's 8:00. */
+function freshenMyjysk() {
+  const st = S.user.mj;
+  if (!st || !st.at || st.at < news.lastMorning(Date.now())) refreshMyjysk(false);
+}
+
+function refreshMyjysk(visible) {
+  if (!mjOn()) return;
+  if (S.mj.busy && !visible) return;
+  S.mj.busy = !visible;
+  try { A.myjysk(!!visible); } catch (e) { S.mj.busy = false; toast('Ova verzija aplikacije ne zna čitati MYJYSK.'); }
+  if (S.mode === 'news') renderNews();
+}
+
+window.onMyjysk = (r) => {
+  S.mj.busy = false;
+  if (r && r.how === 'ok') {
+    takeMyjysk(r);
+    store.write(MJ_FILE, { how: 'ok', at: +r.at || Date.now(), data: r.data });
+  } else if (r && r.how === 'login') {
+    if (!S.user.mj) S.user.mj = { at: 0, my: [], loc: [], news: [], sys: [], seen: {} };
+    S.user.mj.login = true;
+    saveUser();
+  } else if (r && r.how === 'error') {
+    toast('MYJYSK nije odgovorio. Pokušaj malo kasnije.');
+  }
+  renderHome();
+  if ($('#settings').classList.contains('is-active')) renderSettings();
+};
+
+window.openNews = () => {
+  while (S.stack.length > 1) back();
+  setMode('news');
+};
+
+const NEWS_SHOWN = 12;
+
+function taskRow(st, t, { role = false } = {}) {
+  const d = news.due(t.end, Date.now());
+  const meta = [d.date ? `rok ${d.date}${t.time && t.time !== '00:00' ? ` u ${t.time}` : ''}` : '', role && t.role ? t.role : '', t.eff ? `${t.eff} min` : ''].filter(Boolean).join(' · ');
+  return `<button class="mj-row" type="button" ${t.path ? `data-mj-open="${esc(t.path)}"` : 'disabled'}>
+    <span class="mj-main"><span class="mj-title">${news.isNew(st, t.id) ? '<span class="mj-new">NOVO</span>' : ''}${esc(t.title)}</span>${meta ? `<span class="mj-meta">${esc(meta)}</span>` : ''}</span>
+    ${d.left ? `<span class="mj-due ${d.cls}">${esc(d.left)}</span>` : ''}${t.path ? icon('chev', 'chev') : ''}
+  </button>`;
+}
+
+function newsRow(st, a) {
+  const open = S.mj.open.has(a.id);
+  const meta = [a.kb, a.by, news.dayText(a.at), a.att ? `${a.att} ${plural(a.att, 'prilog', 'priloga', 'priloga')}` : ''].filter(Boolean).join(' · ');
+  return `<div class="mj-news"><button class="mj-row" type="button" data-mj-x="${esc(a.id)}" aria-expanded="${open}">
+    <span class="mj-main"><span class="mj-title">${news.isNew(st, a.id) ? '<span class="mj-new">NOVO</span>' : ''}${esc(a.title)}</span><span class="mj-meta">${esc(meta)}</span></span>
+  </button>${open ? `<div class="mj-text">${esc(a.text) || 'Bez teksta u pregledu.'}${a.path ? `<br><button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori cijelu vijest u MYJYSK</button>` : ''}</div>` : ''}</div>`;
+}
+
+function renderNews() {
+  const box = $('#newsWrap');
+  const st = S.user.mj;
+  const busy = S.mj.busy;
+  const stateLine = `<div class="mj-state"><span>${busy ? '<i class="mj-busy"></i>Učitavam iz MYJYSK…' : st && st.at ? `Stanje ${esc(ageText(st.at))}${cfg().mj ? ' · samo se osvježi u 8:00' : ''}` : ''}</span>${busy ? '' : '<button class="text-btn" type="button" data-mj="refresh">Osvježi</button>'}</div>`;
+  const login = st && st.login
+    ? `<button class="orders-bar" type="button" data-mj="login">${icon('info')}<span><b>Prijavi se ponovo u MYJYSK</b><small>Prijava je istekla, pa se zadaci i vijesti ne mogu osvježiti.</small></span><span class="go">Prijava</span></button>`
+    : '';
+  if (!st || !st.at) {
+    box.innerHTML = `${stateLine}${login}<div class="mj-intro"><h3>Zadaci i vijesti iz MYJYSK</h3>
+      <p>Tvoji zadaci, zadaci prodavnice, vijesti i status sistema na jednom mjestu. Učitavaju se s tvojom prijavom u MYJYSK, svako jutro u 8:00 same od sebe.</p>
+      <button class="btn btn-primary btn-block" type="button" data-mj="login">Prijavi se i učitaj</button></div>`;
+    return;
+  }
+  const now = Date.now();
+  const mine = news.myTasks(st, mjMe());
+  const overMine = mine.filter((t) => t.over).length;
+  const sys = st.sys.filter((a) => now - Date.parse(a.at) < 14 * 86400000 || news.isNew(st, a.id));
+  const loc = st.loc.filter((t) => !t.done);
+  const locOpen = loc.filter((t) => !t.over), locOver = loc.filter((t) => t.over);
+  const locShown = (S.mj.loc === 'over' ? locOver : S.mj.loc === 'all' ? loc : locOpen).slice().sort(news.byDue);
+  const newsShown = S.mj.more ? st.news : st.news.slice(0, NEWS_SHOWN);
+  box.innerHTML = `${stateLine}${login}
+  <section class="mj-sec"><div class="sec-head"><h2>Za mene</h2><small>${mine.length}${overMine ? ` · ${overMine} isteklo` : ''}</small></div>
+    ${mine.length ? `<div class="list">${mine.map((t) => taskRow(st, t, { role: true })).join('')}</div>` : '<p class="empty">Nema otvorenih zadataka za tebe.</p>'}</section>
+  ${sys.length ? `<section class="mj-sec"><div class="sec-head"><h2>Status sistema</h2></div>
+    ${sys.map((a) => `<div class="mj-sys${now - Date.parse(a.at) > 3 * 86400000 ? ' is-old' : ''}"><b>${news.isNew(st, a.id) ? '<span class="mj-new">NOVO</span>' : ''}${esc(a.title)}</b><p>${esc(a.text.length > 320 ? `${a.text.slice(0, 320)}…` : a.text)}</p><small>${esc(news.dayText(a.at))}${a.path ? ` · <button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori</button>` : ''}</small></div>`).join('')}</section>` : ''}
+  <section class="mj-sec"><div class="sec-head"><h2>Vijesti</h2><small>${st.newsTotal > st.news.length ? `zadnjih ${st.news.length} od ${st.newsTotal}` : st.news.length}</small></div>
+    ${st.news.length ? `<div class="list">${newsShown.map((a) => newsRow(st, a)).join('')}${st.news.length > NEWS_SHOWN ? `<button class="mj-more" type="button" data-mj="more">${S.mj.more ? 'Prikaži manje' : `Prikaži još ${st.news.length - NEWS_SHOWN}`}</button>` : ''}</div>` : '<p class="empty">Nema vijesti.</p>'}</section>
+  <section class="mj-sec"><div class="sec-head"><h2>Zadaci lokacije</h2><small>${loc.length}</small></div>
+    <div class="chips">${[['open', `Otvoreni ${locOpen.length}`], ['over', `Istekli ${locOver.length}`], ['all', 'Svi']].map(([k, t]) => `<button class="chip" type="button" aria-pressed="${S.mj.loc === k}" data-mj="loc-${k}">${t}</button>`).join('')}</div>
+    ${locShown.length ? `<div class="list">${locShown.map((t) => taskRow(st, t, { role: true })).join('')}</div>` : '<p class="empty">Nema zadataka ovdje.</p>'}</section>`;
+}
+
+function onNewsClick(t) {
+  if (t.dataset.mjOpen) { try { A.myjyskOpen(t.dataset.mjOpen); } catch (e) { /* older shell */ } return; }
+  if (t.dataset.mjX) {
+    const id = t.dataset.mjX;
+    if (!S.mj.open.delete(id)) S.mj.open.add(id);
+    renderNews();
+    return;
+  }
+  const a = t.dataset.mj;
+  if (a === 'refresh') refreshMyjysk(false);
+  else if (a === 'login') refreshMyjysk(true);
+  else if (a === 'more') { S.mj.more = !S.mj.more; renderNews(); }
+  else if (a.startsWith('loc-')) { S.mj.loc = a.slice(4); renderNews(); }
+}
+
 // --------------------------------------------------------------------- home
 
 function renderHome() {
@@ -806,6 +971,17 @@ function renderHome() {
     : has
       ? `${artikala(count)} u ${S.plans.length} ${plural(S.plans.length, 'planogramu', 'planograma', 'planograma')}`
       : 'Tvoji planogrami, uvijek pri ruci';
+  const nw = S.mode === 'news' && mjOn();
+  $('#newsTab').hidden = !mjOn();
+  $('#newsDot').hidden = nw || !newsWaiting();
+  $('#newsWrap').hidden = !nw;
+  if (nw) {
+    $('#homeStats').textContent = 'Zadaci i vijesti iz MYJYSK';
+    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar']) $(id).hidden = true;
+    for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
+    renderNews();
+    return;
+  }
   $('#welcome').hidden = has;
   $('#searchForm').hidden = !has;
   $('#homeDock').hidden = !has;
@@ -1974,6 +2150,11 @@ function bind() {
   // the words that hide Christmas / New Year articles: saved when the field is left; nothing typed brings back the usual ones
   document.addEventListener('change', (ev) => {
     const t = ev.target;
+    if (t && t.id === 'mjMe') {
+      setCfg({ mjMe: String(t.value || '').replace(/\s+/g, ' ').trim().slice(0, 120) });
+      toast('Spremljeno.');
+      return;
+    }
     if (!t || t.id !== 'xmasWords') return;
     const words = String(t.value || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     setCfg({ xmas: words || core.XMAS_WORDS });
@@ -1984,11 +2165,12 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
     if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
     if (t.dataset.openClear) { openClearance(); return; }
+    if (t.dataset.mj || t.dataset.mjOpen || t.dataset.mjX) { onNewsClick(t); return; }
     if (t.dataset.codesMore) {
       if (!S.planMore.delete(t.dataset.codesMore)) S.planMore.add(t.dataset.codesMore);
       renderPlans();
@@ -2026,6 +2208,9 @@ window.appResume = () => {
   if (S.update && S.update.state === 'permission') { renderUpdate(); return; }
   checkOnline();
   if (!S.updChecked || Date.now() - S.updChecked > 3 * 3600 * 1000) checkUpdate(false);
+  pickupMyjysk();
+  if (S.mode === 'news') freshenMyjysk();
+  else renderHome();
 };
 const applyTheme = () => {
   const t = cfg().theme;
@@ -2037,7 +2222,8 @@ window.themeChanged = () => applyTheme();
 function boot() {
   load();
   applyTheme();
-  S.mode = cfg().mode === 'orders' ? 'orders' : 'plan';
+  S.mode = cfg().mode === 'orders' ? 'orders' : cfg().mode === 'news' && mjOn() ? 'news' : 'plan';
+  pickupMyjysk();
   bind();
   checkOnline();
   // the app stopped working last time: write down which crash it was, switch the background look off once, and show the cause in the settings
@@ -2051,7 +2237,9 @@ function boot() {
     }
   }
   syncWatch();
+  syncMyjysk(false);
   renderHome();
+  if (S.mode === 'news') freshenMyjysk();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);
 }

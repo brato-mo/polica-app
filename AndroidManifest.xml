@@ -84,5 +84,18 @@
         <service android:name=".ReadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".UpdateReceiver" android:exported="false" />
         <service android:name=".OrderWatch" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- MYJYSK (tasks and news): its own sign-in page, and one task or article opened for reading -->
+        <activity
+            android:name=".MyjyskActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+        <!-- MYJYSK read every morning at 8:00: the alarm (set again after a restart or an update) and the job -->
+        <receiver android:name=".MyjyskDaily" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".MyjyskJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

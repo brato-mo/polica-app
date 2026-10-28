@@ -67,6 +67,7 @@ public class MainActivity extends Activity {
     private static final int REQ_STORE = 3;
     private static final int REQ_ORDERS = 4;
     private static final int REQ_CLEAR = 5;
+    private static final int REQ_MYJYSK = 6;
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,80}");
     private static final Map<String, String> MIME = new HashMap<>();
 
@@ -124,6 +125,14 @@ public class MainActivity extends Activity {
         setContentView(web);
         web.loadUrl(START);
         takeImport(getIntent());
+        takeOpen(getIntent());
+    }
+
+    /** A notification asked for a screen of the app ("news"): the page opens it once it is ready. */
+    private void takeOpen(Intent intent) {
+        if (intent == null || !"news".equals(intent.getStringExtra("open"))) return;
+        intent.removeExtra("open");
+        runJs("window.openNews&&openNews()");
     }
 
     @Override
@@ -131,6 +140,7 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         takeImport(intent);
+        takeOpen(intent);
     }
 
     @Override
@@ -365,6 +375,9 @@ public class MainActivity extends Activity {
         } else if (req == REQ_CLEAR) {
             String json = data == null ? null : data.getStringExtra(ClearanceActivity.EXTRA_JSON);
             runJs("window.onClearance&&onClearance(" + (json == null ? "{how:'cancelled',parts:[]}" : json) + ")");
+        } else if (req == REQ_MYJYSK) {
+            String json = data == null ? null : data.getStringExtra(MyjyskActivity.EXTRA_JSON);
+            runJs("window.onMyjysk&&onMyjysk(" + (json == null ? "{how:'cancelled'}" : json) + ")");
         } else if (req == REQ_SCAN) {
             String js;
             if (result == RESULT_OK && data != null && data.getStringExtra("code") != null) {
@@ -475,6 +488,27 @@ public class MainActivity extends Activity {
             public void done(boolean online, String counts) {
                 probing = false;
                 runJs("window.onStoreStatus&&onStoreStatus(" + online + "," + org.json.JSONObject.quote(counts) + ")");
+            }
+        });
+    }
+
+    private boolean mjReading;
+
+    private void readMyjysk() {
+        if (mjReading) return;
+        mjReading = true;
+        MyjyskProbe.run(this, (android.view.ViewGroup) getWindow().getDecorView(), new MyjyskProbe.Callback() {
+            @Override
+            public void done(String how, JSONObject data) {
+                mjReading = false;
+                JSONObject o = new JSONObject();
+                try {
+                    o.put("how", how);
+                    o.put("at", System.currentTimeMillis());
+                    if (data != null) o.put("data", data);
+                } catch (Exception ignored) {
+                }
+                runJs("window.onMyjysk&&onMyjysk(" + o + ")");
             }
         });
     }
@@ -718,6 +752,72 @@ public class MainActivity extends Activity {
                     i.putExtra(ClearanceActivity.EXTRA_STATUSES, statuses);
                     i.putExtra(ClearanceActivity.EXTRA_GROUP, group);
                     startActivityForResult(i, REQ_CLEAR);
+                }
+            });
+        }
+
+        /** True when this build knows the MYJYSK address. */
+        @JavascriptInterface
+        public boolean myjyskOn() {
+            return MyjyskReader.enabled(MainActivity.this);
+        }
+
+        /** Who the employee is in MYJYSK (name, number), from the build; the page may change it in the settings. */
+        @JavascriptInterface
+        public String myjyskMe() {
+            try {
+                return getString(R.string.myjysk_me);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** Reads the MYJYSK tasks and news: hidden (visible = false) or on the sign-in screen. Answer: window.onMyjysk. */
+        @JavascriptInterface
+        public void myjysk(final boolean visible) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (!visible) {
+                        readMyjysk();
+                        return;
+                    }
+                    Intent i = new Intent(MainActivity.this, MyjyskActivity.class);
+                    i.putExtra(MyjyskActivity.EXTRA_MODE, "login");
+                    startActivityForResult(i, REQ_MYJYSK);
+                }
+            });
+        }
+
+        /** Opens one MYJYSK task or news article ("/ui/tasks/distrtask/123", "/ui/news/articles/456") for reading. */
+        @JavascriptInterface
+        public void myjyskOpen(final String path) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    Intent i = new Intent(MainActivity.this, MyjyskActivity.class);
+                    i.putExtra(MyjyskActivity.EXTRA_MODE, "view");
+                    i.putExtra(MyjyskActivity.EXTRA_PATH, path);
+                    startActivity(i);
+                }
+            });
+        }
+
+        /** The 8:00 reading on or off; ask = ask for the notification permission when it is missing. */
+        @JavascriptInterface
+        public void myjyskDaily(final boolean on, final boolean ask) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (ask && on && Build.VERSION.SDK_INT >= 33
+                            && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
+                        }
+                        MyjyskDaily.set(MainActivity.this, on);
+                    } catch (Exception e) {
+                        Log.w(TAG, "myjysk daily", e);
+                    }
                 }
             });
         }
