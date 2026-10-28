@@ -983,8 +983,10 @@ export function resolveCode(index, code, learned = {}) {
   if (index.alias.has(c)) return { num: index.alias.get(c).to, via: 'substitute', from: c };
   const d = c.replace(/^0+/, '');
   if (d !== c && index.byNum.has(d)) return { num: d, via: 'exact' };
-  // a 7-digit item number inside a longer code (EAN, label codes)
-  if (/^[0-9]{8,14}$/.test(c)) {
+  // a 7-digit item number inside a longer code (label codes). Not for standard EAN-8/EAN-13 barcodes:
+  // their digits contain many 7-digit windows that match an item number by coincidence, which opened
+  // the wrong article. Those go to the StoreFront lookup instead.
+  if (/^[0-9]{8,14}$/.test(c) && c.length !== 8 && c.length !== 13) {
     const hits = new Set();
     for (let i = 0; i + 7 <= c.length; i++) {
       const s = c.slice(i, i + 7);
