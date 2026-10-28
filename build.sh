@@ -22,7 +22,10 @@ UPDATE_REPO="$(tr -d ' \r\n' < update-repo.txt)"
 MJHOST=""; MJME=""
 if [ -s keystore/myjysk-host.txt ]; then MJHOST="$(tr -d ' \r\n' < keystore/myjysk-host.txt | rev)"; fi
 if [ -s keystore/myjysk-me.txt ]; then MJME="$(tr -d '\r\n' < keystore/myjysk-me.txt)"; fi
-case "$MJHOST$MJME" in *[\<\>\&\'\"\`\$\\]*) echo "MYJYSK files must not contain < > & ' \" \` $ \\"; exit 1;; esac
+# the planogram server the store concept pages link to (private file); planograms are downloaded only from there
+PLHOST=""
+if [ -s keystore/plans-host.txt ]; then PLHOST="$(tr -d ' \r\n' < keystore/plans-host.txt | rev)"; fi
+case "$MJHOST$MJME$PLHOST" in *[\<\>\&\'\"\`\$\\]*) echo "MYJYSK files must not contain < > & ' \" \` $ \\"; exit 1;; esac
 # the name the app shows (launcher, title, texts): private file keystore/appname.txt; without it the neutral name
 APPNAME="Polica"
 if [ -s keystore/appname.txt ]; then APPNAME="$(tr -d '\r\n' < keystore/appname.txt)"; fi
@@ -35,6 +38,7 @@ cat > build/res-gen/values/config.xml <<XML
     <string name="update_repo" translatable="false">$UPDATE_REPO</string>
     <string name="myjysk_host" translatable="false">$MJHOST</string>
     <string name="myjysk_me" translatable="false">$MJME</string>
+    <string name="plans_host" translatable="false">$PLHOST</string>
     <string name="app_name">$APPNAME</string>
     <string name="import_label">Dodaj u $APPNAME</string>
 </resources>

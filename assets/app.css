@@ -1086,3 +1086,6 @@ svg { display: block; }
 .mj-intro { padding: 20px 18px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-1); }
 .mj-intro h3 { margin: 0 0 6px; font-size: 17px; font-weight: 800; }
 .mj-intro p { margin: 0 0 14px; color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
+.mj-mine { color: var(--primary); font-weight: 800; }
+.mj-news.is-sys .mj-title { color: var(--danger); }
+.mj-sec > .text-btn { display: block; margin: 8px 2px 0; }

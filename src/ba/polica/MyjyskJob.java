@@ -75,9 +75,11 @@ public class MyjyskJob extends JobService {
             JSONObject before = old == null ? null : old.optJSONObject("data");
             int tasks = fresh(before, data, "my") + fresh(before, data, "loc");
             int news = fresh(before, data, "news") + fresh(before, data, "sys");
-            if (before == null || tasks + news == 0) return;
+            int concept = changedUpdates(before, data);
+            if (before == null || tasks + news + concept == 0) return;
             StringBuilder t = new StringBuilder();
-            if (tasks > 0) t.append(tasks).append(tasks == 1 ? " novi zadatak" : tasks < 5 ? " nova zadatka" : " novih zadataka");
+            if (concept > 0) t.append("Važno: ").append(concept).append(concept == 1 ? " odjel ima novo ažuriranje koncepta" : " odjela imaju nova ažuriranja koncepta");
+            if (tasks > 0) t.append(t.length() > 0 ? ", " : "").append(tasks).append(tasks == 1 ? " novi zadatak" : tasks < 5 ? " nova zadatka" : " novih zadataka");
             if (news > 0) t.append(t.length() > 0 ? ", " : "").append(news).append(news == 1 ? " nova vijest" : news < 5 ? " nove vijesti" : " novih vijesti");
             notify("MYJYSK: " + t, "Otvori " + getString(R.string.app_name) + " → Vijesti.");
         } else if ("login".equals(how)) {
@@ -105,6 +107,28 @@ public class MyjyskJob extends JobService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** How many concept update pages ("2) Ažuriranja") were changed since the last read. */
+    private static int changedUpdates(JSONObject before, JSONObject now) {
+        if (before == null || now == null) return 0;
+        JSONObject a = before.optJSONObject("kb"), b = now.optJSONObject("kb");
+        if (a == null || b == null) return 0;
+        java.util.Map<String, String> had = new java.util.HashMap<>();
+        JSONArray x = a.optJSONArray("upds");
+        if (x != null) for (int i = 0; i < x.length(); i++) {
+            JSONObject o = x.optJSONObject(i);
+            if (o != null) had.put(o.optString("id"), o.optString("upd"));
+        }
+        int n = 0;
+        JSONArray y = b.optJSONArray("upds");
+        if (y != null) for (int i = 0; i < y.length(); i++) {
+            JSONObject o = y.optJSONObject(i);
+            if (o == null) continue;
+            String was = had.get(o.optString("id"));
+            if (was == null || !was.equals(o.optString("upd"))) n++;
+        }
+        return n;
     }
 
     /** How many entries of a list were not there in the last read. */

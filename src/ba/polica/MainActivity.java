@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     private static final int REQ_ORDERS = 4;
     private static final int REQ_CLEAR = 5;
     private static final int REQ_MYJYSK = 6;
+    private static final int REQ_PLANSWEB = 7;
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,80}");
     private static final Map<String, String> MIME = new HashMap<>();
 
@@ -375,6 +376,8 @@ public class MainActivity extends Activity {
         } else if (req == REQ_CLEAR) {
             String json = data == null ? null : data.getStringExtra(ClearanceActivity.EXTRA_JSON);
             runJs("window.onClearance&&onClearance(" + (json == null ? "{how:'cancelled',parts:[]}" : json) + ")");
+        } else if (req == REQ_PLANSWEB) {
+            runJs("window.onPlansLogin&&onPlansLogin(true)");
         } else if (req == REQ_MYJYSK) {
             String json = data == null ? null : data.getStringExtra(MyjyskActivity.EXTRA_JSON);
             runJs("window.onMyjysk&&onMyjysk(" + (json == null ? "{how:'cancelled'}" : json) + ")");
@@ -511,6 +514,52 @@ public class MainActivity extends Activity {
                 runJs("window.onMyjysk&&onMyjysk(" + o + ")");
             }
         });
+    }
+
+    private void showPlansLogin(String why) {
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding((int) (22 * d), (int) (8 * d), (int) (22 * d), 0);
+        android.widget.TextView note = new android.widget.TextView(this);
+        note.setText((why == null || why.isEmpty() ? "" : why + "\n\n") + "Isto korisničko ime i lozinka koje upisuješ kad otvaraš planogram. Ostaju samo na ovom telefonu, šifrovani.");
+        box.addView(note);
+        final android.widget.EditText user = new android.widget.EditText(this);
+        user.setHint("Korisničko ime");
+        user.setSingleLine(true);
+        user.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        String[] old = Secret.load(this);
+        if (old != null) user.setText(old[0]);
+        box.addView(user);
+        final android.widget.EditText pass = new android.widget.EditText(this);
+        pass.setHint("Lozinka");
+        pass.setSingleLine(true);
+        pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(pass);
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Prijava za planograme")
+            .setView(box)
+            .setPositiveButton("Prijavi se", new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface di, int w) {
+                    String u = user.getText().toString().trim(), p = pass.getText().toString();
+                    boolean ok = !u.isEmpty() && !p.isEmpty() && Secret.save(MainActivity.this, u, p);
+                    runJs("window.onPlansLogin&&onPlansLogin(" + ok + ")");
+                }
+            })
+            .setNegativeButton("Odustani", new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface di, int w) {
+                    runJs("window.onPlansLogin&&onPlansLogin(false)");
+                }
+            })
+            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                @Override
+                public void onCancel(android.content.DialogInterface di) {
+                    runJs("window.onPlansLogin&&onPlansLogin(false)");
+                }
+            })
+            .show();
     }
 
     private static final int REQ_NOTIF = 9;
@@ -801,6 +850,81 @@ public class MainActivity extends Activity {
                     startActivity(i);
                 }
             });
+        }
+
+        /** Downloads planogram PDFs into the inbox (JSON list, see PlanDownload). Progress and answer: window.onPlanDl. */
+        @JavascriptInterface
+        public void downloadPlans(final String json) {
+            final String host;
+            try {
+                host = new StringBuilder(getString(R.string.plans_host)).reverse().toString().trim();
+            } catch (Exception e) {
+                runJs("window.onPlanDl&&onPlanDl({done:true,files:[],why:'off'})");
+                return;
+            }
+            io.execute(new Runnable() {
+                @Override
+                public void run() {
+                    JSONArray in;
+                    try {
+                        in = new JSONArray(json);
+                    } catch (Exception e) {
+                        in = new JSONArray();
+                    }
+                    JSONArray out;
+                    try {
+                        out = PlanDownload.run(host, dir("inbox"), in, Secret.load(MainActivity.this), new PlanDownload.Progress() {
+                            @Override
+                            public void on(int i, int n, String name) {
+                                runJs("window.onPlanDl&&onPlanDl({i:" + i + ",n:" + n + ",name:" + JSONObject.quote(name) + "})");
+                            }
+                        });
+                    } catch (PlanDownload.NeedLogin e) {
+                        runJs("window.onPlanDl&&onPlanDl({done:true,files:[],login:" + JSONObject.quote(e.kind) + ",detail:" + JSONObject.quote(e.detail) + ",kept:" + (Secret.load(MainActivity.this) != null) + "})");
+                        return;
+                    }
+                    runJs("window.onPlanDl&&onPlanDl({done:true,files:" + out + "})");
+                }
+            });
+        }
+
+        /**
+         * Asks for the user name and password of the planogram server in a native dialog of the app (the page never
+         * sees them) and keeps them encrypted on the phone. Answer: window.onPlansLogin(true|false).
+         */
+        @JavascriptInterface
+        public void plansLogin(final String why) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    showPlansLogin(why);
+                }
+            });
+        }
+
+        /** The planogram server's own sign-in page, on the whole screen; afterwards window.onPlansLogin(true). */
+        @JavascriptInterface
+        public void plansWeb(final String url) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    Intent i = new Intent(MainActivity.this, MyjyskActivity.class);
+                    i.putExtra(MyjyskActivity.EXTRA_MODE, "plans");
+                    i.putExtra(MyjyskActivity.EXTRA_URL, url);
+                    startActivityForResult(i, REQ_PLANSWEB);
+                }
+            });
+        }
+
+        /** Forgets the kept sign-in of the planogram server. */
+        @JavascriptInterface
+        public void plansLogout() {
+            Secret.clear(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean plansLoginKept() {
+            return Secret.load(MainActivity.this) != null;
         }
 
         /** The 8:00 reading on or off; ask = ask for the notification permission when it is missing. */

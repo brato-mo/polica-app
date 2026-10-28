@@ -45,9 +45,10 @@ export const byDue = (a, b) => String(a.end || '9').localeCompare(String(b.end |
 export function merge(prev, data, at) {
   const first = !prev || !prev.at || !prev.seen;
   const seen = {};
-  const lists = ['my', 'loc', 'news', 'sys'];
-  for (const k of lists) {
-    for (const x of data[k] || []) {
+  const imp = data.kb ? important(data, at) : (prev && prev.imp) || [];
+  const all = { ...data, imp };
+  for (const k of ['my', 'loc', 'news', 'sys', 'imp']) {
+    for (const x of all[k] || []) {
       if (!x || !x.id) continue;
       const was = prev && prev.seen ? prev.seen[x.id] : undefined;
       seen[x.id] = was !== undefined ? was : first ? 0 : at;
@@ -57,6 +58,7 @@ export function merge(prev, data, at) {
     at,
     my: data.my || [], loc: data.loc || [], news: data.news || [], sys: data.sys || [],
     locTotal: data.locTotal || (data.loc || []).length, newsTotal: data.newsTotal || (data.news || []).length,
+    imp, kb: data.kb || (prev && prev.kb) || null,
     seen, viewedAt: prev && prev.viewedAt ? prev.viewedAt : at, login: false,
   };
 }
@@ -90,4 +92,83 @@ export function due(end, now) {
 export function dayText(at) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(at || '');
   return m ? `${+m[3]}.${+m[2]}.` : '';
+}
+
+// ------------------------------------------------ store concept: planograms and updates ("Važno")
+
+const DEPT_BS = { '01': 'Posteljina', '02': 'Kupaonica', '03': 'Madraci', '04': 'Namještaj', '05': 'Kućanstvo', '06': 'Kućni tekstil', '07': 'Oprema za prozore', '08': 'Jorgani i jastuci', '09': 'Vrt', '10': 'Spremanje i čišćenje', '11': 'Božić' };
+/** "05 Homeware" -> "05 Kućanstvo"; other folders keep their name. */
+export function deptName(topic) {
+  const m = /^(\d{2})\b/.exec(topic || '');
+  return m && DEPT_BS[m[1]] ? `${m[1]} ${DEPT_BS[m[1]]}` : String(topic || '');
+}
+export const deptNo = (topic) => { const m = /^(\d{2})\b/.exec(topic || ''); return m ? m[1] : ''; };
+
+const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+
+/** "17.10.26" / "17.10.2026" -> "2026-10-17" */
+export function isoDate(d, m, y) {
+  const yy = String(y).length === 2 ? 2000 + +y : +y;
+  return `${yy}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** The entries of an "Ažuriranja" text: blocks between rows of stars, a block may start with its date. */
+export function updateEntries(u, max = 3) {
+  const out = [];
+  for (const raw of String(u.text || '').split(/\*{5,}/)) {
+    const b = raw.trim();
+    if (!b) continue;
+    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\.?\s*:?\s*/.exec(b);
+    const body = m ? b.slice(m[0].length).trim() : b;
+    let lines = body.split('\n').map((x) => x.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const id = `u:${u.id}:${hash(lines.join(' ').slice(0, 300))}`;
+    if (lines.length > 1 && /:\s*$/.test(lines[0])) lines = [`${lines[0].replace(/:\s*$/, '')}: ${lines[1]}`, ...lines.slice(2)];
+    out.push({
+      id, kind: 'upd', dept: u.dept, path: u.path, dated: !!m,
+      date: m ? isoDate(m[1], m[2], m[3]) : '',
+      title: lines[0].slice(0, 160), text: lines.slice(1).join(' · ').slice(0, 500),
+    });
+  }
+  // a block without its own date belongs to the newest dated one (or to the page's last change)
+  const newest = out.filter((e) => e.dated).map((e) => e.date).sort().pop() || String(u.upd || '').slice(0, 10);
+  for (const e of out) if (!e.date) e.date = newest;
+  return out.slice(0, max);
+}
+
+/** "Važno": dated concept updates per department, concepts changed in the last month, and the system status. */
+export function important(data, now, { conceptDays = 30, sysDays = 14 } = {}) {
+  const kb = data.kb || {};
+  const out = [];
+  for (const u of kb.upds || []) for (const e of updateEntries(u)) out.push(e);
+  for (const c of kb.concepts || []) {
+    const t = Date.parse(c.upd);
+    if (!t || now - t > conceptDays * 86400000) continue;
+    out.push({ id: `c:${c.id}:${String(c.upd).slice(0, 10)}`, kind: 'concept', dept: c.dept, path: c.path, date: String(c.upd).slice(0, 10), title: c.title.replace(/^\s*1\)\s*/, ''), text: '' });
+  }
+  for (const a of data.sys || []) {
+    const t = Date.parse(a.at);
+    if (t && now - t > sysDays * 86400000) continue;
+    out.push({ id: `s:${a.id}`, kind: 'sys', dept: '', path: a.path, date: String(a.at).slice(0, 10), title: a.title, text: a.text.slice(0, 500) });
+  }
+  return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+/**
+ * The planograms of the store: links of the country (org), left or right side, standard or compact. One per
+ * planogram (same sis + sub), named after the link text.
+ */
+export function planLinks(kb, { org = '1014BIH', side = 'left', compact = false } = {}) {
+  const by = new Map();
+  for (const p of (kb && kb.plans) || []) {
+    if (org && p.org !== org) continue;
+    if (!p.text || !/^https:\/\//.test(p.url)) continue;
+    const tag = `${p.sub} ${p.text}`;
+    const isLeft = /\bleft\b|lijev/i.test(tag), isCompact = /compact/i.test(tag);
+    if ((side === 'left') !== isLeft || compact !== isCompact) continue;
+    if (!/planogra|planogam/i.test(p.text)) continue; // display guides (IDG) and the like are not shelf planograms
+    const key = `${p.sis}|${p.sub}`;
+    if (!by.has(key)) by.set(key, { key, url: p.url, dept: p.dept, text: p.text, name: `${p.text.replace(/[\\/:*?"<>|]+/g, ' ').trim()}.pdf` });
+  }
+  return [...by.values()].sort((a, b) => a.dept.localeCompare(b.dept) || a.text.localeCompare(b.text));
 }

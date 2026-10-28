@@ -36,6 +36,7 @@ public class MyjyskActivity extends Activity {
     static final String EXTRA_MODE = "mode";
     static final String EXTRA_PATH = "path";
     static final String EXTRA_JSON = "json";
+    static final String EXTRA_URL = "url";
     private static final Pattern SAFE_PATH = Pattern.compile("/ui/(tasks/[a-z]+|news/articles)/\\d{1,14}");
     private static final long POLL_MS = 900;
 
@@ -66,9 +67,19 @@ public class MyjyskActivity extends Activity {
             finishWith("off", null);
             return;
         }
-        mode = "view".equals(getIntent().getStringExtra(EXTRA_MODE)) ? "view" : "login";
+        String m = getIntent().getStringExtra(EXTRA_MODE);
+        mode = "view".equals(m) || "plans".equals(m) ? m : "login";
         String path = getIntent().getStringExtra(EXTRA_PATH);
-        if ("view".equals(mode)) {
+        if ("plans".equals(mode)) {
+            // the planogram server's own sign-in: only its address, from the build
+            String ph = new StringBuilder(getString(R.string.plans_host)).reverse().toString().trim();
+            Uri pu = Uri.parse(String.valueOf(getIntent().getStringExtra(EXTRA_URL)));
+            if (ph.isEmpty() || !ph.equalsIgnoreCase(pu.getHost())) {
+                finishWith("bad", null);
+                return;
+            }
+            target = "https://" + pu.getHost() + pu.getEncodedPath() + (pu.getEncodedQuery() == null ? "" : "?" + pu.getEncodedQuery());
+        } else if ("view".equals(mode)) {
             if (path == null || !SAFE_PATH.matcher(path).matches()) {
                 finishWith("bad", null);
                 return;
@@ -102,7 +113,7 @@ public class MyjyskActivity extends Activity {
             }
         });
         TextView title = new TextView(this);
-        title.setText("MYJYSK");
+        title.setText("plans".equals(mode) ? "Planogrami" : "MYJYSK");
         title.setTextColor(ink);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         title.setTypeface(Typeface.DEFAULT_BOLD);
@@ -128,7 +139,8 @@ public class MyjyskActivity extends Activity {
         note.setGravity(Gravity.CENTER);
         note.setPadding((int) dp(16), (int) dp(6), (int) dp(16), (int) dp(10));
         note.setText("Prijavi se u MYJYSK. Kad uđeš, zadaci i vijesti se učitaju i ovaj ekran se sam zatvori.");
-        note.setVisibility("login".equals(mode) ? View.VISIBLE : View.GONE);
+        if ("plans".equals(mode)) note.setText("Prijavi se isto kao u MYJYSK. Kad se prijaviš, ovaj ekran se sam zatvori i planogrami se preuzmu.");
+        note.setVisibility("view".equals(mode) ? View.GONE : View.VISIBLE);
         root.addView(note, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         FrameLayout body = new FrameLayout(this);
@@ -150,6 +162,14 @@ public class MyjyskActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 // sign-in pages of the company's identity provider are https too; everything else stays out
                 return !"https".equals(r.getUrl().getScheme());
+            }
+        });
+        // planogram server: once signed in, it sends the PDF, which a WebView hands over as a download. That means
+        // the sign-in worked; the app downloads the planograms itself with the new sign-in.
+        web.setDownloadListener(new android.webkit.DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String ua, String cd, String mime, long len) {
+                if ("plans".equals(mode)) finishWith("ok", null);
             }
         });
         body.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));

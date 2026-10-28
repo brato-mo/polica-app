@@ -555,6 +555,10 @@ const DEFAULTS = {
   upd: true, // look for a new version of the app when it is opened
   mj: true, // read MYJYSK every morning at 8:00 and send a notification when there is something new
   mjMe: null, // who the employee is in MYJYSK (names, numbers, comma between); null = what the build says
+  plSide: 'left', // the store's planograms: left or right side
+  plCompact: false, // SC 3.0 Compact store
+  plOrg: '1014BIH', // the country whose planograms are taken
+  plOff: null, // planograms not taken: { '<sis>|<sub>': true }; null = only the Christmas one with the wall left out
 };
 const cfg = () => ({ ...DEFAULTS, ...(S.user.settings || {}), tabs: { ...DEFAULTS.tabs, ...((S.user.settings || {}).tabs || {}) }, clr: { ...DEFAULTS.clr, ...((S.user.settings || {}).clr || {}) } });
 function setCfg(patch) {
@@ -611,6 +615,14 @@ function renderSettings() {
     <div class="set-row set-col"><div class="set-txt"><b>Ja u MYJYSK</b><small>Ime i prezime ili broj, odvojeno zarezom. Zadaci na kojima piše ovo idu pod „Za mene“, kao i zadaci za Store Staff i sve uloge.</small></div>
       <input class="set-input" id="mjMe" type="text" value="${esc(mjMe())}" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Ja u MYJYSK"></div>
     ${act('mj-refresh', 'Osvježi sada', S.user.mj && S.user.mj.at ? `Stanje ${esc(ageText(S.user.mj.at))}` : 'Još nije učitano')}
+  </div></section>
+
+  <section class="set-block"><h3>Planogrami iz MYJYSK</h3><div class="set-card">
+    ${choice('plSide', 'Strana trgovine', [['left', 'Lijeva'], ['right', 'Desna']], c.plSide)}
+    ${sw('plCompact', 'SC 3.0 Compact trgovina', 'Uključi samo ako je trgovina Compact', c.plCompact)}
+    ${planChips()}
+    ${act('pl-check', 'Provjeri nove planograme', planCheckLine())}
+    ${(() => { try { return A.plansLoginKept && A.plansLoginKept(); } catch (e) { return false; } })() ? act('pl-logout', 'Zaboravi prijavu za planograme', 'Korisničko ime i lozinka se brišu s telefona', true) : ''}
     ${act('mj-clear', 'Obriši vijesti i zadatke s telefona', '', true)}
   </div></section>` : ''}
 
@@ -655,6 +667,8 @@ function onSettingsClick(t) {
     if (a === 'orders-refresh') { refreshOrders(); return; }
     if (a === 'clear-refresh') { refreshClearance(); return; }
     if (a === 'mj-refresh') { refreshMyjysk(false); toast('Učitavam iz MYJYSK…'); return; }
+    if (a === 'pl-check') { checkPlans(); return; }
+    if (a === 'pl-logout') { try { A.plansLogout(); } catch (e) { /* older shell */ } toast('Prijava za planograme je obrisana.'); }
     if (a === 'mj-clear') { S.user.mj = null; saveUser(); store.remove(MJ_FILE); toast('Vijesti i zadaci su obrisani s telefona.'); }
     if (a === 'clear-clear') { S.user.clear = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
@@ -825,7 +839,7 @@ const syncMyjysk = (ask) => { try { if (mjOn() && A.myjyskDaily) A.myjyskDaily(!
 function newsWaiting() {
   const st = S.user.mj;
   if (!st || !st.at) return false;
-  return news.myTasks(st, mjMe()).some((t) => news.isNew(st, t.id)) || st.news.some((a) => news.isNew(st, a.id)) || st.sys.some((a) => news.isNew(st, a.id));
+  return news.myTasks(st, mjMe()).some((t) => news.isNew(st, t.id)) || st.news.some((a) => news.isNew(st, a.id)) || impItems(st).some((x) => x.fresh);
 }
 
 function seenNews() {
@@ -871,6 +885,8 @@ function refreshMyjysk(visible) {
 
 window.onMyjysk = (r) => {
   S.mj.busy = false;
+  const after = S.mj.after;
+  if (after === 'plans' && r && r.how !== 'login') S.mj.after = null;
   if (r && r.how === 'ok') {
     takeMyjysk(r);
     store.write(MJ_FILE, { how: 'ok', at: +r.at || Date.now(), data: r.data });
@@ -883,6 +899,13 @@ window.onMyjysk = (r) => {
   }
   renderHome();
   if ($('#settings').classList.contains('is-active')) renderSettings();
+  if (after === 'plans') {
+    if (r && r.how === 'ok') startPlanDownload();
+    else if (r && r.how === 'login') {
+      openSheet({ title: 'Prijavi se u MYJYSK', body: '<p>Za provjeru planograma treba prijava u MYJYSK. Poslije prijave provjera ide dalje sama.</p>',
+        actions: [{ label: 'Prijavi se', kind: 'btn-primary', onClick: () => { closeSheet(); refreshMyjysk(true); } }, { label: 'Odustani', kind: 'btn-quiet', onClick: () => { S.mj.after = null; closeSheet(); } }] });
+    } else { closeSheet(); if (!r || r.how !== 'cancelled') toast('MYJYSK nije odgovorio, provjera planograma nije urađena.'); }
+  }
 };
 
 window.openNews = () => {
@@ -926,21 +949,51 @@ function renderNews() {
   const now = Date.now();
   const mine = news.myTasks(st, mjMe());
   const overMine = mine.filter((t) => t.over).length;
-  const sys = st.sys.filter((a) => now - Date.parse(a.at) < 14 * 86400000 || news.isNew(st, a.id));
   const loc = st.loc.filter((t) => !t.done);
   const locOpen = loc.filter((t) => !t.over), locOver = loc.filter((t) => t.over);
   const locShown = (S.mj.loc === 'over' ? locOver : S.mj.loc === 'all' ? loc : locOpen).slice().sort(news.byDue);
   const newsShown = S.mj.more ? st.news : st.news.slice(0, NEWS_SHOWN);
   box.innerHTML = `${stateLine}${login}
+  ${impSection(st)}
   <section class="mj-sec"><div class="sec-head"><h2>Za mene</h2><small>${mine.length}${overMine ? ` · ${overMine} isteklo` : ''}</small></div>
     ${mine.length ? `<div class="list">${mine.map((t) => taskRow(st, t, { role: true })).join('')}</div>` : '<p class="empty">Nema otvorenih zadataka za tebe.</p>'}</section>
-  ${sys.length ? `<section class="mj-sec"><div class="sec-head"><h2>Status sistema</h2></div>
-    ${sys.map((a) => `<div class="mj-sys${now - Date.parse(a.at) > 3 * 86400000 ? ' is-old' : ''}"><b>${news.isNew(st, a.id) ? '<span class="mj-new">NOVO</span>' : ''}${esc(a.title)}</b><p>${esc(a.text.length > 320 ? `${a.text.slice(0, 320)}…` : a.text)}</p><small>${esc(news.dayText(a.at))}${a.path ? ` · <button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori</button>` : ''}</small></div>`).join('')}</section>` : ''}
   <section class="mj-sec"><div class="sec-head"><h2>Vijesti</h2><small>${st.newsTotal > st.news.length ? `zadnjih ${st.news.length} od ${st.newsTotal}` : st.news.length}</small></div>
     ${st.news.length ? `<div class="list">${newsShown.map((a) => newsRow(st, a)).join('')}${st.news.length > NEWS_SHOWN ? `<button class="mj-more" type="button" data-mj="more">${S.mj.more ? 'Prikaži manje' : `Prikaži još ${st.news.length - NEWS_SHOWN}`}</button>` : ''}</div>` : '<p class="empty">Nema vijesti.</p>'}</section>
   <section class="mj-sec"><div class="sec-head"><h2>Zadaci lokacije</h2><small>${loc.length}</small></div>
     <div class="chips">${[['open', `Otvoreni ${locOpen.length}`], ['over', `Istekli ${locOver.length}`], ['all', 'Svi']].map(([k, t]) => `<button class="chip" type="button" aria-pressed="${S.mj.loc === k}" data-mj="loc-${k}">${t}</button>`).join('')}</div>
     ${locShown.length ? `<div class="list">${locShown.map((t) => taskRow(st, t, { role: true })).join('')}</div>` : '<p class="empty">Nema zadataka ovdje.</p>'}</section>`;
+}
+
+const IMP_SHOWN = 6;
+const KIND = { plan: 'Planogram', upd: 'Ažuriranje koncepta', concept: 'Koncept', sys: 'Status sistema' };
+const MY_DEPT = '05';
+
+function impItems(st) {
+  const log = (S.user.planLog || []).map((x) => ({ ...x, fresh: (x.at || 0) > (st.viewedAt || 0) }));
+  const imp = (st.imp || []).map((x) => ({ ...x, fresh: news.isNew(st, x.id) }));
+  return [...log, ...imp].sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.fresh - a.fresh));
+}
+
+function impRow(x) {
+  const open = S.mj.open.has(x.id);
+  const mine = news.deptNo(x.dept) === MY_DEPT;
+  const meta = [KIND[x.kind] || '', x.kind === 'plan' ? '' : news.deptName(x.dept), news.dayText(x.date)].filter(Boolean).join(' · ');
+  const go = x.kind === 'plan' && x.planId && S.plans.some((p) => p.id === x.planId)
+    ? `<button class="text-btn" type="button" data-open-plan="${esc(x.planId)}" data-page="0">Otvori planogram</button>${S.user.changes[x.planId] ? ` · <button class="text-btn" type="button" data-changes="${esc(x.planId)}">Šta se promijenilo</button>` : ''}`
+    : x.path ? `<button class="text-btn" type="button" data-mj-open="${esc(x.path)}">Otvori u MYJYSK</button>` : '';
+  return `<div class="mj-news${x.kind === 'sys' ? ' is-sys' : ''}"><button class="mj-row" type="button" data-mj-x="${esc(x.id)}" aria-expanded="${open}">
+    <span class="mj-main"><span class="mj-title">${x.fresh ? '<span class="mj-new">NOVO</span>' : ''}${esc(x.title)}</span><span class="mj-meta">${esc(meta)}${mine ? ' · <b class="mj-mine">tvoj odjel</b>' : ''}</span></span>
+  </button>${open ? `<div class="mj-text">${esc(x.text) || ''}${go ? `${x.text ? '<br>' : ''}${go}` : ''}</div>` : ''}</div>`;
+}
+
+function impSection(st) {
+  const all = impItems(st);
+  if (!all.length) return '';
+  const shown = S.mj.impMore ? all : all.slice(0, IMP_SHOWN);
+  const fresh = all.filter((x) => x.fresh).length;
+  return `<section class="mj-sec"><div class="sec-head"><h2>Važno</h2><small>${fresh ? `${fresh} novo` : 'koncept, planogrami, sistem'}</small></div>
+    <div class="list">${shown.map(impRow).join('')}${all.length > IMP_SHOWN ? `<button class="mj-more" type="button" data-mj="imp-more">${S.mj.impMore ? 'Prikaži manje' : `Prikaži još ${all.length - IMP_SHOWN}`}</button>` : ''}</div>
+    ${mjOn() ? '<button class="text-btn" type="button" data-plcheck>Provjeri nove planograme</button>' : ''}</section>`;
 }
 
 function onNewsClick(t) {
@@ -955,7 +1008,131 @@ function onNewsClick(t) {
   if (a === 'refresh') refreshMyjysk(false);
   else if (a === 'login') refreshMyjysk(true);
   else if (a === 'more') { S.mj.more = !S.mj.more; renderNews(); }
+  else if (a === 'imp-more') { S.mj.impMore = !S.mj.impMore; renderNews(); }
   else if (a.startsWith('loc-')) { S.mj.loc = a.slice(4); renderNews(); }
+}
+
+
+// ------------------------------------------------ planograms from MYJYSK
+
+const sideName = () => `${cfg().plSide === 'right' ? 'desna' : 'lijeva'}${cfg().plCompact ? ' Compact' : ''} trgovina`;
+const planOff = () => cfg().plOff || {};
+function planList() {
+  const st = S.user.mj;
+  const all = news.planLinks(st && st.kb, { org: cfg().plOrg, side: cfg().plSide, compact: !!cfg().plCompact });
+  // the Christmas planogram for stores with a wall is left out until the employee turns it on
+  const off = cfg().plOff || Object.fromEntries(all.filter((p) => /zid|wall/i.test(`${p.text} ${p.key}`)).map((p) => [p.key, true]));
+  return all.map((p) => ({ ...p, off: !!off[p.key] }));
+}
+function planCheckLine() {
+  const last = S.user.planCheck;
+  return `${sideName()[0].toUpperCase()}${sideName().slice(1)} · ${last ? `zadnja provjera ${ageText(last)}` : 'još nije provjereno'}`;
+}
+function planChips() {
+  const list = planList();
+  if (!list.length) return '<div class="set-row"><div class="set-txt"><b>Koji planogrami</b><small>Spisak se pojavi poslije prve provjere.</small></div></div>';
+  if (!cfg().plOff) setCfg({ plOff: Object.fromEntries(list.filter((p) => p.off).map((p) => [p.key, true])) });
+  return `<div class="set-row set-col"><div class="set-txt"><b>Koji planogrami</b><small>Isključeni se ne preuzimaju.</small></div>
+    <div class="chips">${list.map((p) => `<button class="chip" type="button" role="checkbox" aria-checked="${!p.off}" data-ploff="${esc(p.key)}">${esc(news.deptName(p.dept))}${/zid|wall/i.test(`${p.text} ${p.key}`) ? ' sa zidom' : ''}</button>`).join('')}</div></div>`;
+}
+
+function checkPlans() {
+  if (!mjOn()) return;
+  if (S.busy) { toast('Sačekaj da se završi uvoz planograma.'); return; }
+  const st = S.user.mj;
+  if (st && st.kb && Date.now() - st.at < 20 * 60 * 1000) { startPlanDownload(); return; }
+  S.mj.after = 'plans';
+  progress('Provjeravam planograme', 0.03, 'Čitam koncept trgovine u MYJYSK…');
+  refreshMyjysk(false);
+}
+
+let planDl = null; // the running download: { list }
+function startPlanDownload() {
+  const list = planList().filter((p) => !p.off);
+  if (!list.length) {
+    openSheet({ title: 'Nema planograma', body: `<p>U MYJYSK nisam našao planograme za ${esc(sideName())}. Provjeri u postavkama stranu trgovine.</p>`, actions: [{ label: 'U redu', kind: 'btn-primary', onClick: closeSheet }] });
+    return;
+  }
+  const src = S.user.planSrc || {};
+  planDl = { list };
+  progress('Preuzimam planograme', 0.05, `${list.length} ${plural(list.length, 'planogram', 'planograma', 'planograma')} za ${sideName()}`);
+  try {
+    A.downloadPlans(JSON.stringify(list.map((p) => ({ url: p.url, name: p.name, sha: (src[p.key] || {}).sha || '', etag: (src[p.key] || {}).etag || '', lm: (src[p.key] || {}).lm || '' }))));
+  } catch (e) { planDl = null; closeSheet(); toast('Ova verzija aplikacije ne zna preuzimati planograme.'); }
+}
+
+window.onPlanDl = (r) => {
+  if (!planDl) return;
+  if (!r.done) { progress('Preuzimam planograme', 0.05 + (0.9 * r.i) / Math.max(1, r.n), `${r.i + 1}. od ${r.n}: ${r.name}`); return; }
+  const { list } = planDl;
+  planDl = null;
+  if (r.login) { planLogin(r, list); return; }
+  S.user.planCheck = Date.now();
+  const src = S.user.planSrc || (S.user.planSrc = {});
+  const byUrl = new Map(list.map((p) => [p.url, p]));
+  const fresh = [], pending = {}, info = [];
+  let same = 0;
+  for (const f of r.files || []) {
+    const p = byUrl.get(f.url);
+    if (!p) continue;
+    if (f.status === 'same') { same++; src[p.key] = { ...(src[p.key] || {}), sha: f.sha, etag: f.etag, lm: f.lm, at: Date.now() }; continue; }
+    if (f.status === 'new') { fresh.push({ name: p.name, file: f.file, size: f.size }); pending[p.name] = { key: p.key, sha: f.sha, etag: f.etag, lm: f.lm, first: !src[p.key] }; continue; }
+    info.push({ kind: 'dlerror', name: p.text, why: f.why });
+  }
+  saveUser();
+  const head = { kind: 'checked', n: list.length, same, fresh: fresh.length, side: sideName() };
+  if (!fresh.length) { showResults([head, ...info]); if (top().id === 'plans') renderPlans(); return; }
+  queue.push({ list: fresh, target: null, auto: { pending, head, info } });
+  drainImports();
+};
+
+/** The planogram server wants its own sign-in: a user and password once (kept on the phone), or its web page. */
+function planLogin(r, list) {
+  const d = String(r.detail || '');
+  if (r.login === 'auth' && /ntlm|negotiate/i.test(d) && !/basic/i.test(d)) {
+    openSheet({ title: 'Prijava za planograme', body: '<p>Server za planograme traži Windows prijavu, a nju ova verzija aplikacije još ne zna poslati. Javi to, pa ću je dodati.</p>', actions: [{ label: 'U redu', kind: 'btn-primary', onClick: closeSheet }] });
+    return;
+  }
+  if (r.login === 'auth') {
+    closeSheet();
+    S.plWait = true;
+    A.plansLogin(r.kept ? 'Korisničko ime ili lozinka nisu prihvaćeni. Upiši ih ponovo.' : 'Server za planograme traži prijavu (samo prvi put).');
+    return;
+  }
+  openSheet({
+    title: 'Prijava za planograme',
+    body: '<p>Server za planograme traži prijavu, istu kao za MYJYSK. Prijavi se, ekran se sam zatvori i provjera ide dalje.</p>',
+    actions: [{ label: 'Prijavi se', kind: 'btn-primary', onClick: () => { closeSheet(); S.plWait = true; A.plansWeb(list[0].url); } }, { label: 'Odustani', kind: 'btn-quiet', onClick: closeSheet }],
+  });
+}
+
+window.onPlansLogin = (ok) => {
+  if (!S.plWait) return;
+  S.plWait = false;
+  if (ok) startPlanDownload();
+  else toast('Bez prijave se planogrami ne mogu preuzeti.');
+};
+
+/** After the downloaded planograms were read: remember which file each one was, and note the new ones under "Važno". */
+function afterAutoImport(auto, results, from) {
+  const src = S.user.planSrc || (S.user.planSrc = {});
+  const mine = results.slice(from);
+  for (const r of mine) {
+    const p = auto.pending[r.name];
+    if (!p || !['added', 'replaced', 'skipped'].includes(r.kind)) continue;
+    src[p.key] = { sha: p.sha, etag: p.etag, lm: p.lm, at: Date.now() };
+    if (p.first || !r.meta) continue; // the first download of a planogram is not news
+    const c = r.ch;
+    const n = c ? c.added.length + c.moved.length + c.removed.length : 0;
+    (S.user.planLog || (S.user.planLog = [])).unshift({
+      id: `p:${r.meta.id}`, kind: 'plan', at: Date.now(), dept: r.meta.title, date: new Date().toISOString().slice(0, 10), planId: r.meta.id,
+      title: `Novi planogram: ${r.meta.title}`,
+      text: `${r.meta.deadline ? `Rok za postavku ${core.deadlineLabel(r.meta.deadline)}. ` : ''}${n ? `${c.added.length} novih, ${c.moved.length} premještenih, ${c.removed.length} izbačenih artikala.` : ''}`,
+    });
+  }
+  if (S.user.planLog) S.user.planLog = S.user.planLog.slice(0, 30);
+  results.splice(from, 0, auto.head, ...auto.info);
+  saveUser();
 }
 
 // --------------------------------------------------------------------- home
@@ -1589,8 +1766,10 @@ async function drainImports() {
   const results = [];
   try {
     while (queue.length) {
-      const { list, target } = queue.shift();
+      const { list, target, auto } = queue.shift();
+      const from = results.length;
       await importList(list, target, results);
+      if (auto) afterAutoImport(auto, results, from);
     }
   } finally {
     A.clearInbox(); // only now: files of a queued import are in the inbox too
@@ -1695,6 +1874,10 @@ function showResults(results) {
         return `<div class="result"><b>Zamijenjen: ${esc(r.meta.title)}${dl}</b><p>${parts.length ? parts.join(', ') + '.' : 'Nema promjena u rasporedu.'}</p>${parts.length
           ? `<button class="btn btn-small btn-soft" type="button" data-changes="${r.meta.id}">${icon('list')}Pogledaj promjene</button>` : ''}</div>`;
       }
+      case 'checked':
+        return `<div class="result"><b>Provjereno ${r.n} ${plural(r.n, 'planogram', 'planograma', 'planograma')} (${esc(r.side)})</b><p>${r.same ? `${r.same} bez promjene. ` : ''}${r.fresh ? `${r.fresh} ${plural(r.fresh, 'novi ili promijenjen', 'nova ili promijenjena', 'novih ili promijenjenih')}.` : 'Nema novih planograma.'}</p></div>`;
+      case 'dlerror':
+        return `<div class="result"><b>${esc(r.name)}</b><p>Nije preuzet: ${esc(r.why || 'greška')}.</p></div>`;
       case 'notplan':
         return `<div class="result"><b>${esc(r.name)}</b><p>Ne izgleda kao planogram: u njemu nema šifara artikala.</p></div>`;
       case 'locked':
@@ -1706,8 +1889,9 @@ function showResults(results) {
     }
   };
   const ok = results.filter((r) => r.kind === 'added' || r.kind === 'replaced').length;
+  const checked = results.some((r) => r.kind === 'checked');
   openSheet({
-    title: ok ? (results.length === 1 ? 'Planogram je spreman' : 'Uvoz je gotov') : 'Ništa nije uvezeno',
+    title: checked ? (ok ? 'Novi planogrami su tu' : 'Planogrami su najnoviji') : ok ? (results.length === 1 ? 'Planogram je spreman' : 'Uvoz je gotov') : 'Ništa nije uvezeno',
     body: results.map(line).join(''),
     actions: [{ label: 'U redu', kind: 'btn-primary', onClick: closeSheet }],
   });
@@ -1812,6 +1996,7 @@ function planClearHtml(p, view) {
 function renderPlans() {
   const body = $('#plansBody');
   let h = `<div class="plans-top">
+    ${mjOn() ? `<button class="orders-bar" type="button" data-plcheck>${icon('refresh')}<span><b>Provjeri nove planograme</b><small>${esc(planCheckLine())}</small></span><span class="go">Provjeri</span></button>` : ''}
     <button class="btn btn-primary btn-block" type="button" data-add>${icon('plus')}Dodaj planograme</button>
     <p class="hint">Kad stigne novi planogram, samo ga dodaj. @APP@ prepozna isti odjel, zamijeni stari i pokaže šta se promijenilo.</p>
   </div>`;
@@ -2165,12 +2350,14 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
     if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
     if (t.dataset.openClear) { openClearance(); return; }
     if (t.dataset.mj || t.dataset.mjOpen || t.dataset.mjX) { onNewsClick(t); return; }
+    if (t.hasAttribute('data-plcheck')) { checkPlans(); return; }
+    if (t.dataset.ploff) { const off = { ...planOff(), [t.dataset.ploff]: !planOff()[t.dataset.ploff] }; setCfg({ plOff: off }); renderSettings(); return; }
     if (t.dataset.codesMore) {
       if (!S.planMore.delete(t.dataset.codesMore)) S.planMore.add(t.dataset.codesMore);
       renderPlans();

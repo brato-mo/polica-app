@@ -126,6 +126,14 @@ final class MyjyskReader {
             o.put("sys", cap(in.optJSONArray("sys"), 10));
             o.put("locTotal", in.optInt("locTotal"));
             o.put("newsTotal", in.optInt("newsTotal"));
+            JSONObject kb = in.optJSONObject("kb");
+            if (kb != null) {
+                JSONObject k = new JSONObject();
+                k.put("plans", cap(kb.optJSONArray("plans"), 150));
+                k.put("upds", cap(kb.optJSONArray("upds"), 30));
+                k.put("concepts", cap(kb.optJSONArray("concepts"), 40));
+                o.put("kb", k);
+            }
         } catch (Exception ignored) {
         }
         return o;
