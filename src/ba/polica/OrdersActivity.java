@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
 
 /**
  * Reads the customer orders of the tabs Ispunjen, Stigao, Zakasnio and Aktivan from StoreFront's own Customer
- * Orders page, so the app can say that a scanned article was ordered by a customer. The employee is signed in on
+ * Orders page (first through the page's own back end, all lines in a few answers; else through the page itself), so the app can say that a scanned article was ordered by a customer. The employee is signed in on
  * StoreFront's page; this only reads what that page shows. The page gets no bridge to the app. Orders that were
  * read before are not opened again (their article lines do not change); the app passes their numbers in.
  */
@@ -125,13 +125,10 @@ public class OrdersActivity extends Activity {
         } catch (Exception ignored) {
         }
         try {
-            InputStream in = getAssets().open("orders-driver.js");
-            ByteArrayOutputStream bo = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-            in.close();
-            driver = "window.__polKnown=" + known + ";window.__polTabs=" + tabs + ";" + bo.toString("UTF-8");
+            // the fast reader asks the page's own back end; the slow one (through the page) is its fallback
+            driver = "window.__polKnown=" + known + ";window.__polTabs=" + tabs + ";"
+                + "window.__polSlow=function(){" + asset("orders-driver.js") + "\n};"
+                + asset("orders-fast.js");
         } catch (Exception e) {
             finishWith(null, "error", "driver");
             return;
@@ -272,6 +269,16 @@ public class OrdersActivity extends Activity {
         handler.postDelayed(poll, POLL_MS);
     }
 
+    private String asset(String name) throws java.io.IOException {
+        InputStream in = getAssets().open(name);
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+        in.close();
+        return bo.toString("UTF-8");
+    }
+
     private void showStatus(String url) {
         setFull(!onOrders(url));
     }
@@ -326,7 +333,7 @@ public class OrdersActivity extends Activity {
             web.evaluateJavascript(driver, null);
             return;
         }
-        web.evaluateJavascript("(function(){var p=window.__pol;return p?JSON.stringify({d:p.done,e:p.err,r:p.read,s:p.seen,m:p.msg,t:p.tap,x:p.expect||0}):''})()",
+        web.evaluateJavascript("(function(){var p=window.__pol;return p?JSON.stringify({d:p.done,e:p.err,r:p.read,s:p.seen,m:p.msg,t:p.tap,x:p.expect||0,f:!!p.fast}):''})()",
             new ValueCallback<String>() {
                 @Override
                 public void onReceiveValue(String value) {
@@ -349,8 +356,12 @@ public class OrdersActivity extends Activity {
                             lastMove = System.currentTimeMillis();
                         }
                         String msg = "Čitam narudžbe kupaca…";
-                        if (o.optInt("s") > 0) msg += "\n" + o.optInt("s") + (o.optInt("x") > 0 ? " od " + o.optInt("x") : "") + " pregledano";
-                        if (o.optInt("r") > 0) msg += ", " + o.optInt("r") + " novih otvoreno";
+                        if (o.optBoolean("f")) {
+                            if (o.optInt("s") > 0) msg += "\n" + o.optInt("s") + (o.optInt("x") > 0 ? " od " + o.optInt("x") : "") + " pročitano";
+                        } else {
+                            if (o.optInt("s") > 0) msg += "\n" + o.optInt("s") + (o.optInt("x") > 0 ? " od " + o.optInt("x") : "") + " pregledano";
+                            if (o.optInt("r") > 0) msg += ", " + o.optInt("r") + " novih otvoreno";
+                        }
                         status.setText(msg);
                         if (!msg.equals(lastNote)) {
                             lastNote = msg;
