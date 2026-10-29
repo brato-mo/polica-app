@@ -52,7 +52,8 @@
 
     <div class="seg" id="modeSeg" role="tablist" aria-label="Pretraga">
       <button class="seg-btn" type="button" role="tab" data-mode="plan" aria-selected="true">Planogrami</button>
-      <button class="seg-btn" type="button" role="tab" data-mode="orders" aria-selected="false">Narudžbe kupaca</button>
+      <button class="seg-btn" type="button" role="tab" data-mode="orders" aria-selected="false">Narudžbe</button>
+      <button class="seg-btn" type="button" role="tab" data-mode="news" aria-selected="false" id="newsTab" hidden>Vijesti<span class="seg-dot" id="newsDot" hidden></span></button>
     </div>
 
     <form class="search" id="searchForm" role="search" autocomplete="off">
@@ -89,6 +90,8 @@
         </div>
       </div>
     </div>
+
+    <div id="newsWrap" class="mj" hidden></div>
 
     <div id="welcome" class="welcome" hidden>
       <div class="welcome-art" aria-hidden="true">
