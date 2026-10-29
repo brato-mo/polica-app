@@ -1,7 +1,7 @@
 {
- "code": 31,
- "name": "1.30",
- "notes": "Preglednik u aplikaciji (čitač vijesti, Excel prilozi kao lista artikala) i automatska prijava u MYJYSK, StoreFront i planograme",
+ "code": 32,
+ "name": "1.31",
+ "notes": "Narudžbe: brojevi po tabovima kao na StoreFrontu, nema više lažnog 'Na StoreFrontu ima promjena'",
  "size": 1929605,
- "sha256": "204a97b81fc260d6bf5156420dfd167d65251c0de035cfa8e26884e92e7a78aa"
+ "sha256": "ae1c82b2541baa40e0d7df5d66a983b546f15d7c56c53aaa0922d885615c3700"
 }
