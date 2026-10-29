@@ -1,7 +1,7 @@
 {
- "code": 28,
- "name": "1.27",
- "notes": "Skener više ne čita lažne barkodove sa tkanine i šara: kod mora biti isto pročitan više puta",
- "size": 1880113,
- "sha256": "bede6cece759ff2c938cb3bd978b421f7b1b987a91a2bc99e86cfd1195ca0714"
+ "code": 29,
+ "name": "1.28",
+ "notes": "Nova kartica Vijesti: zadaci iz MYJYSK, Važno (ažuriranja koncepta i planograma), vijesti; svako jutro u 8:00. Dugme Provjeri nove planograme",
+ "size": 1908917,
+ "sha256": "9f7d071451c2fa0c6f25305e05d57c0fed8543281f36f50da602586f1fa53c33"
 }
