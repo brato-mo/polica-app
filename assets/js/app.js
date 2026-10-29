@@ -785,12 +785,14 @@ function refreshOrders() {
 }
 
 const TABS_ALL = ['Aktivan', 'Zakasnio', 'Stigao', 'Ispunjen'];
+// how many orders StoreFront shows in a tab: an order is in several tabs at once (Aktivan holds every open one)
+const inTab = (list, k) => list.filter((x) => (Array.isArray(x.tabs) && x.tabs.length ? x.tabs : [x.tab]).includes(k)).length;
 // numbers of the last full read, for the enabled tabs: "Aktivan:92,Stigao:45"
 const baseCounts = () => {
   const o = S.user.orders;
   if (!o) return '';
   const t = cfg().tabs;
-  return TABS_ALL.filter((k) => t[k]).map((k) => `${k}:${o.list.filter((x) => x.tab === k).length}`).join(',');
+  return TABS_ALL.filter((k) => t[k]).map((k) => `${k}:${inTab(o.list, k)}`).join(',');
 };
 const syncWatch = (ask) => { try { if (A.watch) A.watch(!!cfg().watch, baseCounts(), !!ask); } catch (e) { /* ignore */ } };
 // what StoreFront shows now against what was read: [['Aktivan', +3], ...]
@@ -799,7 +801,7 @@ function siteDiff() {
   if (!o || !S.site) return [];
   const t = cfg().tabs;
   return TABS_ALL.filter((k) => t[k] && S.site[k] != null)
-    .map((k) => [k, S.site[k] - o.list.filter((x) => x.tab === k).length]).filter((x) => x[1] !== 0);
+    .map((k) => [k, S.site[k] - inTab(o.list, k)]).filter((x) => x[1] !== 0);
 }
 
 function renderOrdersBar() {
@@ -812,7 +814,7 @@ function renderOrdersBar() {
   if (!o) {
     b.innerHTML = `${ic}<span><b>Narudžbe kupaca</b><small>Učitaj iz StoreFronta, pa @APP@ javi kad je artikal naručen</small></span><span class="go">Učitaj</span>`;
   } else {
-    const c = (t) => o.list.filter((x) => x.tab === t).length;
+    const c = (t) => inTab(o.list, t);
     const df = siteDiff();
     if (df.length) {
       b.innerHTML = `${ic}<span><b>Na StoreFrontu ima promjena</b><small>${df.map(([k, n]) => `${k} ${n > 0 ? '+' : ''}${n}`).join(', ')} · ${esc(ageText(o.at))}</small></span><span class="go">Osvježi</span>`;

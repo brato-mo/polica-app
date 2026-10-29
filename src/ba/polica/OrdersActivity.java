@@ -448,6 +448,15 @@ public class OrdersActivity extends Activity {
                 c.put("date", cut(r.optString("date"), 12));
                 c.put("n", Math.max(0, Math.min(999, r.optInt("n"))));
                 c.put("tab", tab);
+                JSONArray tl = r.optJSONArray("tabs"); // every tab the order is in (Aktivan holds them all)
+                if (tl != null) {
+                    JSONArray ok = new JSONArray();
+                    for (int k = 0; k < tl.length() && k < 4; k++) {
+                        String x = tl.optString(k);
+                        if ("Ispunjen".equals(x) || "Stigao".equals(x) || "Zakasnio".equals(x) || "Aktivan".equals(x)) ok.put(x);
+                    }
+                    c.put("tabs", ok);
+                }
                 if (r.has("ph")) c.put("ph", r.optString("ph").replaceAll("[^0-9+ /()-]", "").trim());
                 JSONArray its = r.optJSONArray("items");
                 if (its != null) {

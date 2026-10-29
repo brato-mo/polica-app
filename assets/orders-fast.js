@@ -92,8 +92,12 @@
           for (var i = 0; i < list.length; i++) {
             var o = toOrder(list[i], tab);
             P.seen++;
-            if (o.no.length < 9 || seen[o.no]) continue;
-            seen[o.no] = 1;
+            if (o.no.length < 9) continue;
+            // an order is in several tabs at once (Aktivan holds every open order): it is kept once, under the
+            // first tab it was seen in, and remembers all of them so the numbers match StoreFront's tabs
+            if (seen[o.no]) { if (seen[o.no].tabs.indexOf(tab) < 0) seen[o.no].tabs.push(tab); continue; }
+            o.tabs = [tab];
+            seen[o.no] = o;
             P.read++;
             P.orders.push(o);
           }
