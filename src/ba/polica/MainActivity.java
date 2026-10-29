@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
     private static final int REQ_CLEAR = 5;
     private static final int REQ_MYJYSK = 6;
     private static final int REQ_PLANSWEB = 7;
+    private static final int REQ_BROWSER = 10;
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,80}");
     private static final Map<String, String> MIME = new HashMap<>();
 
@@ -376,6 +377,9 @@ public class MainActivity extends Activity {
         } else if (req == REQ_CLEAR) {
             String json = data == null ? null : data.getStringExtra(ClearanceActivity.EXTRA_JSON);
             runJs("window.onClearance&&onClearance(" + (json == null ? "{how:'cancelled',parts:[]}" : json) + ")");
+        } else if (req == REQ_BROWSER) {
+            String json = data == null ? null : data.getStringExtra(BrowserActivity.EXTRA_JSON);
+            if (json != null && json.contains("xlsx")) runJs("window.onAttachment&&onAttachment()");
         } else if (req == REQ_PLANSWEB) {
             runJs("window.onPlansLogin&&onPlansLogin(true)");
         } else if (req == REQ_MYJYSK) {
@@ -522,7 +526,7 @@ public class MainActivity extends Activity {
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding((int) (22 * d), (int) (8 * d), (int) (22 * d), 0);
         android.widget.TextView note = new android.widget.TextView(this);
-        note.setText((why == null || why.isEmpty() ? "" : why + "\n\n") + "Isto korisničko ime i lozinka koje upisuješ kad otvaraš planogram. Ostaju samo na ovom telefonu, šifrovani.");
+        note.setText((why == null || why.isEmpty() ? "" : why + "\n\n") + "Isto korisničko ime i lozinka za MYJYSK, StoreFront i planograme. Kad te sistem odjavi, aplikacija se sama ponovo prijavi. Ostaju samo na ovom telefonu, šifrovani.");
         box.addView(note);
         final android.widget.EditText user = new android.widget.EditText(this);
         user.setHint("Korisničko ime");
@@ -537,13 +541,14 @@ public class MainActivity extends Activity {
         pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         box.addView(pass);
         new android.app.AlertDialog.Builder(this)
-            .setTitle("Prijava za planograme")
+            .setTitle("Prijava")
             .setView(box)
             .setPositiveButton("Prijavi se", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface di, int w) {
                     String u = user.getText().toString().trim(), p = pass.getText().toString();
                     boolean ok = !u.isEmpty() && !p.isEmpty() && Secret.save(MainActivity.this, u, p);
+                    if (ok) AutoLogin.reset(MainActivity.this); // a new password: signing in by itself may try again
                     runJs("window.onPlansLogin&&onPlansLogin(" + ok + ")");
                 }
             })
@@ -844,10 +849,10 @@ public class MainActivity extends Activity {
             ui.post(new Runnable() {
                 @Override
                 public void run() {
-                    Intent i = new Intent(MainActivity.this, MyjyskActivity.class);
-                    i.putExtra(MyjyskActivity.EXTRA_MODE, "view");
-                    i.putExtra(MyjyskActivity.EXTRA_PATH, path);
-                    startActivity(i);
+                    // the app's own browser (the reader for news); an Excel attachment comes back as window.onAttachment
+                    Intent i = new Intent(MainActivity.this, BrowserActivity.class);
+                    i.putExtra(BrowserActivity.EXTRA_PATH, path);
+                    startActivityForResult(i, REQ_BROWSER);
                 }
             });
         }
@@ -920,6 +925,14 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void plansLogout() {
             Secret.clear(MainActivity.this);
+            AutoLogin.reset(MainActivity.this);
+        }
+
+        /** The kept sign-in: "none", "ok", or "refused" (the last automatic sign-in was not accepted). */
+        @JavascriptInterface
+        public String loginState() {
+            if (Secret.load(MainActivity.this) == null) return "none";
+            return AutoLogin.refused(MainActivity.this) ? "refused" : "ok";
         }
 
         @JavascriptInterface

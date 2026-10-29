@@ -89,6 +89,11 @@
             android:name=".MyjyskActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+        <!-- The app's own browser: a MYJYSK news article in the reader, or the page itself; never handed to Chrome -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
         <!-- MYJYSK read every morning at 8:00: the alarm (set again after a restart or an update) and the job -->
         <receiver android:name=".MyjyskDaily" android:exported="true">
             <intent-filter>

@@ -47,6 +47,11 @@ final class StoreProbe {
         w.setAlpha(0f);
         w.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView v, String url) {
+                AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return !"https".equals(r.getUrl().getScheme());
             }
@@ -64,7 +69,9 @@ final class StoreProbe {
                 String u = w.getUrl();
                 boolean away = false;
                 try {
-                    away = u != null && !host.equals(Uri.parse(u).getHost()) && w.getProgress() >= 100;
+                    away = u != null && !host.equals(Uri.parse(u).getHost()) && w.getProgress() >= 100
+                        // on the sign-in page with a kept login: the app signs in by itself, wait for it
+                        && !(AutoLogin.ready(w.getContext()) && AutoLogin.isLoginPage(w.getContext(), u) && System.currentTimeMillis() - t0 < 15000);
                 } catch (Exception ignored) {
                 }
                 if (away || System.currentTimeMillis() - t0 > 25000) {

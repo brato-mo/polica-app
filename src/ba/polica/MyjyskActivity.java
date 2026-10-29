@@ -159,6 +159,11 @@ public class MyjyskActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView v, String url) {
+                AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 // sign-in pages of the company's identity provider are https too; everything else stays out
                 return !"https".equals(r.getUrl().getScheme());

@@ -195,6 +195,7 @@ function back() {
   if (t.id === 'item' && S.item !== t.state) { S.item = t.state; renderItem(); }
   if (t.id === 'missing') renderMissing(t.state);
   if (t.id === 'changes') renderChanges(t.state);
+  if (t.id === 'attach') renderAttach();
   if (t.id === 'plans') renderPlans();
   if (t.id === 'home') renderHome();
   return true;
@@ -582,6 +583,19 @@ function renderSettings() {
     ${choice('theme', 'Tema', [['auto', 'Kao telefon'], ['light', 'Svijetla'], ['dark', 'Tamna']], c.theme)}
   </div></section>
 
+  ${(() => {
+    let st = 'none';
+    try { st = A.loginState ? A.loginState() : (A.plansLoginKept && A.plansLoginKept() ? 'ok' : 'none'); } catch (e) { /* older shell */ }
+    const line = st === 'ok' ? 'Uključena. Kad te MYJYSK ili StoreFront odjavi, @APP@ se sama ponovo prijavi.'
+      : st === 'refused' ? 'Lozinka nije prihvaćena (možda je promijenjena). Upiši novu, do tada se aplikacija ne prijavljuje sama.'
+      : 'Isključena. Upiši korisničko ime i lozinku i aplikacija se sama prijavljuje kad te sistem odjavi.';
+    return `<section class="set-block"><h3>Prijava</h3><div class="set-card">
+    <div class="set-row"><div class="set-txt"><b>Automatska prijava</b><small class="${st === 'refused' ? 'is-bad' : ''}">${line}</small></div></div>
+    ${act('login-set', st === 'none' ? 'Upiši korisničko ime i lozinku' : 'Promijeni korisničko ime i lozinku', 'Isti za MYJYSK, StoreFront i planograme. Ostaju samo na ovom telefonu, šifrovani.')}
+    ${st !== 'none' ? act('login-forget', 'Zaboravi korisničko ime i lozinku', 'Brišu se s ovog telefona', true) : ''}
+  </div></section>`;
+  })()}
+
   <section class="set-block"><h3>Pretraga i skeniranje</h3><div class="set-card">
     ${choice('mode', 'Pri otvaranju', mjOn() ? [['plan', 'Planogrami'], ['orders', 'Narudžbe'], ['news', 'Vijesti']] : [['plan', 'Planogrami'], ['orders', 'Narudžbe']], c.mode)}
     ${sw('vib', 'Vibracija pri skeniranju', 'Kratka vibracija kad se barkod pročita', c.vib)}
@@ -622,7 +636,6 @@ function renderSettings() {
     ${sw('plCompact', 'SC 3.0 Compact trgovina', 'Uključi samo ako je trgovina Compact', c.plCompact)}
     ${planChips()}
     ${act('pl-check', 'Provjeri nove planograme', planCheckLine())}
-    ${(() => { try { return A.plansLoginKept && A.plansLoginKept(); } catch (e) { return false; } })() ? act('pl-logout', 'Zaboravi prijavu za planograme', 'Korisničko ime i lozinka se brišu s telefona', true) : ''}
     ${act('mj-clear', 'Obriši vijesti i zadatke s telefona', '', true)}
   </div></section>` : ''}
 
@@ -668,7 +681,8 @@ function onSettingsClick(t) {
     if (a === 'clear-refresh') { refreshClearance(); return; }
     if (a === 'mj-refresh') { refreshMyjysk(false); toast('Učitavam iz MYJYSK…'); return; }
     if (a === 'pl-check') { checkPlans(); return; }
-    if (a === 'pl-logout') { try { A.plansLogout(); } catch (e) { /* older shell */ } toast('Prijava za planograme je obrisana.'); }
+    if (a === 'login-set') { S.loginWait = true; A.plansLogin(''); return; }
+    if (a === 'login-forget') { try { A.plansLogout(); } catch (e) { /* older shell */ } toast('Korisničko ime i lozinka su obrisani s telefona.'); }
     if (a === 'mj-clear') { S.user.mj = null; saveUser(); store.remove(MJ_FILE); toast('Vijesti i zadaci su obrisani s telefona.'); }
     if (a === 'clear-clear') { S.user.clear = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
@@ -929,7 +943,122 @@ function newsRow(st, a) {
   const meta = [a.kb, a.by, news.dayText(a.at), a.att ? `${a.att} ${plural(a.att, 'prilog', 'priloga', 'priloga')}` : ''].filter(Boolean).join(' · ');
   return `<div class="mj-news"><button class="mj-row" type="button" data-mj-x="${esc(a.id)}" aria-expanded="${open}">
     <span class="mj-main"><span class="mj-title">${news.isNew(st, a.id) ? '<span class="mj-new">NOVO</span>' : ''}${esc(a.title)}</span><span class="mj-meta">${esc(meta)}</span></span>
-  </button>${open ? `<div class="mj-text">${esc(a.text) || 'Bez teksta u pregledu.'}${a.path ? `<br><button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori cijelu vijest u MYJYSK</button>` : ''}</div>` : ''}</div>`;
+  </button>${open ? `<div class="mj-text">${esc(a.text) || 'Bez teksta u pregledu.'}${a.path ? `<br><button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori vijest</button>` : ''}</div>` : ''}</div>`;
+}
+
+// ------------------------------------------------- an Excel attachment of a news article
+
+const ATT_SHOWN = 150;
+
+/** Which columns hold what: the article number (7 digits in most rows), its name, the store, quantity, reason. */
+function prepAttachment(a) {
+  const rows = a.rows.filter((r) => Array.isArray(r)).map((r) => r.map((c) => String(c == null ? '' : c)));
+  const isNum = (c) => /^-?\d+([.,]\d+)?(E-?\d+)?$/i.test(c);
+  let h = 0;
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    if (rows[i].filter((c) => c && !isNum(c)).length >= 2) { h = i; break; }
+  }
+  const head = rows[h] || [];
+  const data = rows.slice(h + 1);
+  const width = Math.max(head.length, ...data.slice(0, 50).map((r) => r.length), 0);
+  const find = (re, not = []) => head.findIndex((c, i) => re.test(c) && !not.includes(i));
+  let art = -1, best = 0;
+  for (let c = 0; c < width; c++) {
+    const n = data.filter((r) => /^\d{7}$/.test((r[c] || '').trim())).length;
+    const bonus = /artic|artik|material/i.test(head[c] || '') ? 0.5 : 0;
+    if (n + bonus > best) { best = n + bonus; art = c; }
+  }
+  if (best < Math.max(1, data.length * 0.3)) art = -1;
+  let name = find(/short text|naziv|opis|descr|^text|^name|article name|artikal naziv/i, [art]);
+  if (name < 0 && art >= 0) name = head.findIndex((c, i) => i > art && data.slice(0, 30).filter((r) => r[i] && !isNum(r[i])).length > 15);
+  const site = find(/^(site|store|prodavnica|prodavaonica|trgovina|plant|lokacija)$/i);
+  const qty = find(/quant|količ|kolic|^qty|pcs|^kom/i);
+  const why = find(/reason|razlog/i);
+  // the employee's own store: from the customer orders (their numbers start with it: #7X704…)
+  const o = S.user.orders && S.user.orders.list && S.user.orders.list[0];
+  const m = o && /^#?\d([A-Z]\d{3})/.exec(o.no || '');
+  const sites = site >= 0 ? new Set(data.map((r) => (r[site] || '').trim())) : new Set();
+  const mine = m && sites.has(m[1]) ? m[1] : '';
+  return { ...a, head, data, art, name, site, qty, why, mine };
+}
+
+window.onAttachment = () => {
+  let a = null;
+  try { a = JSON.parse(A.readText('attachment.json') || 'null'); } catch (e) { a = null; }
+  if (!a || !Array.isArray(a.rows) || !a.rows.length) { toast('Prilog se ne može prikazati.'); return; }
+  S.att = prepAttachment(a);
+  S.attF = { site: S.att.mine ? 'mine' : 'all', kind: 'all', q: '', table: false, more: false };
+  renderAttach();
+  go('attach');
+};
+
+function attRows() {
+  const A2 = S.att, f = S.attF;
+  const q = f.q.trim().toLowerCase();
+  return A2.data.filter((r) => {
+    if (f.site === 'mine' && A2.site >= 0 && (r[A2.site] || '').trim() !== A2.mine) return false;
+    const num = A2.art >= 0 ? (r[A2.art] || '').trim() : '';
+    if (f.kind === 'ord' && !(num && ordersOf(num).length)) return false;
+    if (f.kind === 'plan' && !(num && S.index.byNum.has(num))) return false;
+    return !q || r.some((c) => String(c).toLowerCase().includes(q));
+  });
+}
+
+function attRow(r) {
+  const A2 = S.att;
+  const num = A2.art >= 0 ? (r[A2.art] || '').trim() : '';
+  const bits = [
+    A2.qty >= 0 && r[A2.qty] ? `${esc(A2.head[A2.qty] || 'Količina')}: ${esc(r[A2.qty])}` : '',
+    A2.site >= 0 && S.attF.site === 'all' && r[A2.site] ? esc(r[A2.site]) : '',
+    A2.why >= 0 && r[A2.why] ? esc(r[A2.why]) : '',
+  ].filter(Boolean).join(' · ');
+  const line = bits ? `<span class="store-line">${bits}</span>` : '';
+  if (/^\d{7}$/.test(num) && S.index.byNum.has(num)) return itemRow(num, { sub: line });
+  const nm = A2.name >= 0 ? r[A2.name] : '';
+  return `<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main">
+    <span class="code">${esc(num || r.filter(Boolean).slice(0, 1).join(''))}</span><span class="item-name">${esc(nm) || 'Bez naziva'}</span>
+    <span class="pills">${num ? '<span class="pill pill-muted">Nije u tvojim planogramima</span>' : ''}${num && ordersOf(num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
+}
+
+function renderAttach() {
+  const A2 = S.att, f = S.attF;
+  if (!A2) return;
+  $('#attachTitle').textContent = A2.name || 'Prilog';
+  const list = attRows();
+  const inSite = (r) => !(f.site === 'mine' && A2.site >= 0 && (r[A2.site] || '').trim() !== A2.mine);
+  const base = A2.data.filter(inSite);
+  const numOf = (r) => (A2.art >= 0 ? (r[A2.art] || '').trim() : '');
+  const nOrd = base.filter((r) => numOf(r) && ordersOf(numOf(r)).length).length;
+  const nPlan = base.filter((r) => numOf(r) && S.index.byNum.has(numOf(r))).length;
+  const siteChips = A2.site >= 0 && A2.mine
+    ? `<div class="chips">${[['mine', `Moja prodavnica (${esc(A2.mine)})`], ['all', `Sve prodavnice (${A2.data.length})`]].map(([k, t]) => `<button class="chip" type="button" aria-pressed="${f.site === k}" data-att-site="${k}">${t}</button>`).join('')}</div>` : '';
+  const kindChips = A2.art >= 0
+    ? `<div class="chips">${[['all', `Sve linije ${base.length}`], ['ord', `Naručio kupac ${nOrd}`], ['plan', `U mojim planogramima ${nPlan}`]].map(([k, t]) => `<button class="chip" type="button" aria-pressed="${f.kind === k}" data-att-kind="${k}">${t}</button>`).join('')}</div>` : '';
+  const shown = f.more ? list : list.slice(0, ATT_SHOWN);
+  const body = f.table || A2.art < 0
+    ? `<div class="att-table"><table><thead><tr>${A2.head.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${shown.map((r) => `<tr>${A2.head.map((_, i) => `<td>${esc(r[i] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+    : `<div class="list">${shown.map(attRow).join('')}</div>`;
+  $('#attachBody').innerHTML = `
+    ${A2.title ? `<p class="att-from">Iz vijesti: <b>${esc(A2.title)}</b></p>` : ''}
+    <div class="att-tools">
+      <input class="set-input" id="attQ" type="search" value="${esc(f.q)}" placeholder="Traži broj ili naziv" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Traži u prilogu">
+      ${siteChips}${kindChips}
+      ${A2.art >= 0 ? `<button class="text-btn" type="button" data-att-table>${f.table ? 'Prikaži kao listu' : 'Prikaži kao tabelu'}</button>` : ''}
+    </div>
+    ${list.length ? body : '<p class="empty">Nema linija za ovaj izbor.</p>'}
+    ${list.length > ATT_SHOWN ? `<button class="mj-more" type="button" data-att-more>${f.more ? 'Prikaži manje' : `Prikaži još ${list.length - ATT_SHOWN}`}</button>` : ''}`;
+  const q = $('#attQ');
+  q.addEventListener('input', debounce(() => { S.attF.q = q.value; S.attF.more = false; renderAttach(); const n = $('#attQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200));
+}
+
+function onAttachClick(ev) {
+  const t = ev.target.closest('button, [data-num]');
+  if (!t) return;
+  if (t.dataset.attSite) { S.attF.site = t.dataset.attSite; S.attF.more = false; renderAttach(); return; }
+  if (t.dataset.attKind) { S.attF.kind = t.dataset.attKind; S.attF.more = false; renderAttach(); return; }
+  if ('attTable' in t.dataset) { S.attF.table = !S.attF.table; renderAttach(); return; }
+  if ('attMore' in t.dataset) { S.attF.more = !S.attF.more; renderAttach(); return; }
+  if (t.dataset.num) openItem(t.dataset.num, { via: 'attachment' });
 }
 
 function renderNews() {
@@ -1114,6 +1243,12 @@ function planLogin(r, list) {
 }
 
 window.onPlansLogin = (ok) => {
+  if (S.loginWait) {
+    S.loginWait = false;
+    if (ok) toast('Sačuvano. Aplikacija se sama prijavljuje kad te sistem odjavi.');
+    if (top().id === 'settings') renderSettings();
+    return;
+  }
   if (!S.plWait) return;
   S.plWait = false;
   if (ok) startPlanDownload();
@@ -2317,6 +2452,8 @@ function bind() {
   $('#scanBtn').addEventListener('click', startScan);
   for (const b of $$('[data-scan]')) b.addEventListener('click', startScan);
   for (const b of $$('[data-back]')) b.addEventListener('click', () => back());
+  $('#attachBody').addEventListener('click', onAttachClick);
+  $('#attachBack').addEventListener('click', () => { if (S.att && S.att.path) { try { A.myjyskOpen(S.att.path); } catch (e) { /* older shell */ } } else back(); });
   $('#scrim').addEventListener('click', () => { if (sheet.dismissible) closeSheet(); });
   $('#itemViewer').addEventListener('click', openViewerForItem);
   $('#clearRecent').addEventListener('click', () => { S.user.recent = []; saveUser(); renderHome(); });

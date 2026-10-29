@@ -53,6 +53,11 @@ final class MyjyskProbe {
         w.setAlpha(0f);
         w.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView v, String url) {
+                AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return !"https".equals(r.getUrl().getScheme());
             }

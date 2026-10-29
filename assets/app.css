@@ -1089,3 +1089,14 @@ svg { display: block; }
 .mj-mine { color: var(--primary); font-weight: 800; }
 .mj-news.is-sys .mj-title { color: var(--danger); }
 .mj-sec > .text-btn { display: block; margin: 8px 2px 0; }
+.set-txt small.is-bad { color: var(--danger); }
+
+/* Excel attachment of a news article */
+.att-from { margin: 2px 2px 12px; font-size: 14px; color: var(--ink-2); }
+.att-tools { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.att-tools .text-btn { align-self: flex-start; }
+.att-table { overflow-x: auto; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); }
+.att-table table { border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+.att-table th { position: sticky; top: 0; background: var(--surface-2); text-align: left; font-weight: 800; }
+.att-table th, .att-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.fab-quiet { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
