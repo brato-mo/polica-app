@@ -1,7 +1,7 @@
 {
- "code": 30,
- "name": "1.29",
- "notes": "Narudžbe kupaca se čitaju brzo preko StoreFront API-ja (sekunde umjesto minuta); stari način ostaje kao rezerva",
- "size": 1908984,
- "sha256": "b617d917531f968aadd4f17aee05739b298baaf61db43dc2c145d61a3c389bc2"
+ "code": 31,
+ "name": "1.30",
+ "notes": "Preglednik u aplikaciji (čitač vijesti, Excel prilozi kao lista artikala) i automatska prijava u MYJYSK, StoreFront i planograme",
+ "size": 1929605,
+ "sha256": "204a97b81fc260d6bf5156420dfd167d65251c0de035cfa8e26884e92e7a78aa"
 }
