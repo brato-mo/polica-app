@@ -1,7 +1,7 @@
 {
- "code": 32,
- "name": "1.31",
- "notes": "Narudžbe: brojevi po tabovima kao na StoreFrontu, nema više lažnog 'Na StoreFrontu ima promjena'",
+ "code": 33,
+ "name": "1.32",
+ "notes": "Automatska prijava popunjava i StoreFront stranicu za prijavu (Secure Logon), ne samo prijavu firme",
  "size": 1929605,
- "sha256": "ae1c82b2541baa40e0d7df5d66a983b546f15d7c56c53aaa0922d885615c3700"
+ "sha256": "d7111eaf6f26ce7221b6946dc5e448ff2c3cc5d5475a7cd381c4fd95dd9340a9"
 }
