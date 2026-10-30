@@ -1,7 +1,7 @@
 {
- "code": 33,
- "name": "1.32",
- "notes": "Automatska prijava popunjava i StoreFront stranicu za prijavu (Secure Logon), ne samo prijavu firme",
+ "code": 34,
+ "name": "1.33",
+ "notes": "Narudžbe: opis računa (avansna, predračun, rez...) i kad je račun napravljen; Završeno = kupac preuzeo",
  "size": 1929605,
- "sha256": "d7111eaf6f26ce7221b6946dc5e448ff2c3cc5d5475a7cd381c4fd95dd9340a9"
+ "sha256": "2e56deef053e3ef9d9a7457e3e08b46588b05aad390ca23aad91127c16e26877"
 }

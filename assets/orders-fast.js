@@ -106,6 +106,33 @@
         } while (list.length === PAGE && (total < 0 || got < total) && start < 5000);
         P.tabs.push(tab + ':' + got);
       }
+      // each order's history: the receipt's description ("avansna", "predračun", "rez"...) that the store wrote for
+      // JYSK, and when it was written, which is when the receipt was made. Eight at a time; a failed one is skipped.
+      P.msg = 'Napomene';
+      var hist = base.replace('/customer-order/', '/customer-order/order-history/');
+      var qi = 0;
+      async function one() {
+        while (qi < P.orders.length) {
+          var o = P.orders[qi++];
+          var n = encodeURIComponent(o.no.replace(/^#/, ''));
+          try {
+            var h = await get(hist + n + '/-1/' + n + '?source=WSS');
+            if (!Array.isArray(h)) continue;
+            var notes = [], first = null;
+            for (var x = 0; x < h.length; x++) {
+              var ev = h[x] || {};
+              var at = txt(ev.eventDateFmt); // "29.10.2026 19:07:51"
+              if (ev.type === 'CORRESPONDENCE_INTERNAL_TEXT') {
+                if (txt(ev.text)) notes.push(txt(ev.text));
+                if (/^\d{2}\.\d{2}\.\d{4}/.test(at) && (!first || +ev.eventDate < first.t)) first = { t: +ev.eventDate, at: at };
+              }
+            }
+            if (notes.length) o.note = notes.join(' · ').slice(0, 160);
+            if (first) o.made = first.at.slice(0, 16);
+          } catch (e) { /* no history for this one */ }
+        }
+      }
+      await Promise.all([one(), one(), one(), one(), one(), one(), one(), one()]);
       P.done = true;
     } catch (e) {
       // the back end did not answer as expected: read through the page, as before

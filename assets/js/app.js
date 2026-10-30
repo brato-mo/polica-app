@@ -255,7 +255,7 @@ function ordersBlock(num, { after = false, label = '' } = {}) {
   if (!o) return after ? `<button class="btn btn-soft btn-block btn-small store-btn" type="button" data-orders="1">${icon('link')}Provjeri narudžbe kupaca</button>` : '';
   if (hits.length && !after) {
     const rows = hits.map(({ ord, qty, st }) => `<div class="ord-row">
-        <div><b>${esc(custName(ord))}</b>${ord.ph && cfg().phone ? `<a class="ord-tel" href="tel:${esc(String(ord.ph).replace(/[^\d+]/g, ''))}">${esc(ord.ph)}</a>` : ''}<small>${esc(ord.no.slice(-6))}${ord.date ? ` · dostava ${esc(ord.date)}` : ''}</small>${st === 'Otvoreno' ? '<small class="ord-wait">Nije zaprimljeno: roba još nije stigla ili čeka prijem</small>' : st === 'Popunjeno' ? '<small class="ord-ok">Roba zaprimljena</small>' : st ? `<small>${esc(st)}</small>` : ''}</div>
+        <div><b>${esc(custName(ord))}</b>${ord.ph && cfg().phone ? `<a class="ord-tel" href="tel:${esc(String(ord.ph).replace(/[^\d+]/g, ''))}">${esc(ord.ph)}</a>` : ''}${madeHtml(ord)}<small>${esc(ord.no.slice(-6))}${ord.date ? ` · dostava ${esc(ord.date)}` : ''}</small>${st === 'Otvoreno' ? '<small class="ord-wait">Nije zaprimljeno: roba još nije stigla ili paleta nije zaprimljena</small>' : st === 'Popunjeno' ? '<small class="ord-ok">Roba zaprimljena, u magacinu je</small>' : st === 'Završeno' ? '<small class="ord-done">Kupac je ovo već preuzeo</small>' : st ? `<small>${esc(st)}</small>` : ''}${noteHtml(ord)}</div>
         <div class="ord-r"><span class="ord-chip">${esc(ord.status || ord.tab)}</span><em>${qty > 0 ? `${qty} kom` : ''}</em></div>
       </div>`).join('');
     const stale = Date.now() - o.at > cfg().stale * 3600 * 1000;
@@ -701,14 +701,19 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 const custName = (ord) => (cfg().name ? titleCase(ord.name) : `Narudžba ${ord.no.slice(-6)}`);
 const telOf = (p) => String(p || '').replace(/[^\d+]/g, '');
 const stBadge = (st) => (st === 'Otvoreno' ? '<span class="ol-st is-open">nije zaprimljeno</span>'
-  : st === 'Popunjeno' ? '<span class="ol-st is-ok">zaprimljeno</span>' : st ? `<span class="ol-st">${esc(st)}</span>` : '');
+  : st === 'Popunjeno' ? '<span class="ol-st is-ok">zaprimljeno</span>'
+  : st === 'Završeno' ? '<span class="ol-st is-done">kupac preuzeo</span>' : st ? `<span class="ol-st">${esc(st)}</span>` : '');
+const noteHtml = (ord) => (ord.note ? `<div class="ord-note"><span>Opis računa</span>${esc(ord.note)}</div>` : '');
+const madeHtml = (ord) => (ord.made ? `<small class="ocard-made">Kreirano ${esc(ord.made)}</small>` : '');
 
 function orderCard(ord, hit) {
   const lines = (ord.items || []).map((it) => `<li class="${hit && hit(it) ? 'is-hit' : ''}"><span class="code">${esc(it.num)}</span><span class="ol-name">${esc(it.name)}</span><span class="ol-q">${it.qty > 0 ? `${it.qty} kom` : ''}</span>${stBadge(it.st)}</li>`).join('');
   return `<article class="ocard">
     <div class="ocard-top"><b>${esc(custName(ord))}</b><span class="ord-chip">${esc(ord.status || ord.tab)}</span></div>
     ${ord.ph && cfg().phone ? `<a class="ord-tel" href="tel:${esc(telOf(ord.ph))}">${esc(ord.ph)}</a>` : ''}
+    ${madeHtml(ord)}
     <small class="ocard-meta">${esc(ord.no.slice(-6))} · ${esc(ord.tab)}${ord.date ? ` · dostava ${esc(ord.date)}` : ''}</small>
+    ${noteHtml(ord)}
     ${lines ? `<ul class="olines">${lines}</ul>` : ''}
   </article>`;
 }
@@ -751,7 +756,7 @@ function runOrdersSearch() {
       ok = (ord.items || []).some((it) => (d.length >= 7 ? it.num === d.slice(0, 7) : it.num.includes(d)))
         || ord.no.includes(d) || String(ord.ph || '').replace(/\D/g, '').includes(d);
     } else {
-      const hay = norm(`${ord.name} ${ord.no} ${(ord.items || []).map((it) => it.name).join(' ')}`);
+      const hay = norm(`${ord.name} ${ord.no} ${ord.note || ''} ${(ord.items || []).map((it) => it.name).join(' ')}`);
       ok = toks.every((t) => hay.includes(t));
     }
     if (ok) found.push(ord);

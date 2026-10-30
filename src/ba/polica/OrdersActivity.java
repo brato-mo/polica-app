@@ -458,6 +458,10 @@ public class OrdersActivity extends Activity {
                     c.put("tabs", ok);
                 }
                 if (r.has("ph")) c.put("ph", r.optString("ph").replaceAll("[^0-9+ /()-]", "").trim());
+                // the receipt's description (avansna, predračun, rezervacija...) and when it was made
+                if (r.has("note")) c.put("note", cut(r.optString("note").replaceAll("\\s+", " "), 160));
+                String made = r.optString("made");
+                if (made.matches("\\d{2}\\.\\d{2}\\.\\d{4}( \\d{2}:\\d{2})?")) c.put("made", made);
                 JSONArray its = r.optJSONArray("items");
                 if (its != null) {
                     JSONArray oi = new JSONArray();
