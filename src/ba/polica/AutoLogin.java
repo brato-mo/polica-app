@@ -21,9 +21,11 @@ final class AutoLogin {
     private static final String PREFS = "autologin";
     private static final long AGAIN_MS = 60000; // the sign-in page again within this time after a try: rejected
 
-    // when each WebView last sent the form: only the same WebView coming back to the form means a refused password
-    // (two WebViews may reach the sign-in page at the same moment)
-    private static final java.util.Map<WebView, Long> TRIED = new java.util.WeakHashMap<>();
+    // when each WebView last sent the form, per sign-in host: only the same form (same WebView, same host) coming back
+    // means a refused password. One sign-in goes through two forms in a row (StoreFront's gateway, then the company's
+    // sign-in page), and two WebViews may reach a sign-in page at the same moment.
+    private static final java.util.Map<WebView, java.util.Map<String, Long>> TRIED = new java.util.WeakHashMap<>();
+    private static final int VERSION = 2; // a "refused" kept by an older version may be wrong: forgotten once
 
     private AutoLogin() {
     }
@@ -80,7 +82,9 @@ final class AutoLogin {
     }
 
     private static SharedPreferences prefs(Context c) {
-        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SharedPreferences p = c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (p.getInt("v", 0) < VERSION) p.edit().clear().putInt("v", VERSION).apply();
+        return p;
     }
 
     /** A user name and password are kept and were not refused: worth waiting a moment on a sign-in page. */
@@ -108,10 +112,14 @@ final class AutoLogin {
         if (p.getBoolean("refused", false)) return;
         final String[] cred = Secret.load(c);
         if (cred == null) return;
-        // the page draws its form a moment after loading; fill it once it is there
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+        final String host = Uri.parse(url).getHost();
+        final Handler ui = new Handler(Looper.getMainLooper());
+        final int[] tries = {0};
+        // the page draws its form a moment after loading; look again a few times until it is there
+        ui.postDelayed(new Runnable() {
             @Override
             public void run() {
+                final Runnable again = this;
                 String now;
                 try {
                     now = w.getUrl();
@@ -121,7 +129,8 @@ final class AutoLogin {
                 if (idp ? !isLoginPage(c, now) : !isSystemPage(c, now)) return; // left the page meanwhile: fill nothing
                 // back on the form right after a try: only a refused password brings the form back (pages of the
                 // sign-in host without the form, on the way back after a good sign-in, do not count)
-                Long t = TRIED.get(w);
+                java.util.Map<String, Long> per = TRIED.get(w);
+                Long t = per == null ? null : per.get(host);
                 final boolean recent = t != null && System.currentTimeMillis() - t < AGAIN_MS;
                 // on the systems' own hosts only their gateway sign-in form counts (strict), and nothing else is clicked
                 String js = "(function(u,p,recent,strict){try{var f=document.getElementById('auth_form')||(strict?null:document.querySelector('form'));"
@@ -140,8 +149,15 @@ final class AutoLogin {
                         @Override
                         public void onReceiveValue(String v) {
                             if (v == null) return;
-                            if (v.contains("sent")) TRIED.put(w, System.currentTimeMillis());
-                            else if (v.contains("again")) p.edit().putBoolean("refused", true).apply();
+                            if (v.contains("sent")) {
+                                java.util.Map<String, Long> m = TRIED.get(w);
+                                if (m == null) TRIED.put(w, m = new java.util.HashMap<>());
+                                m.put(host, System.currentTimeMillis());
+                            } else if (v.contains("again")) {
+                                p.edit().putBoolean("refused", true).apply();
+                            } else if (v.contains("none") && ++tries[0] < 5) {
+                                ui.postDelayed(again, 700); // the form is not drawn yet
+                            }
                         }
                     });
                 } catch (Exception ignored) {

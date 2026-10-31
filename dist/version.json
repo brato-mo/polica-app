@@ -1,7 +1,7 @@
 {
- "code": 34,
- "name": "1.33",
- "notes": "Narudžbe: opis računa (avansna, predračun, rez...) i kad je račun napravljen; Završeno = kupac preuzeo",
+ "code": 35,
+ "name": "1.34",
+ "notes": "Automatska prijava prolazi obje stranice za prijavu (StoreFront pa firma) i čeka da se forma pojavi",
  "size": 1929605,
- "sha256": "2e56deef053e3ef9d9a7457e3e08b46588b05aad390ca23aad91127c16e26877"
+ "sha256": "b392a9417d3de290706c9f67289a696b719eea26c6b9b63a3437053413a33dae"
 }
