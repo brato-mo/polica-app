@@ -930,6 +930,11 @@ public class MainActivity extends Activity {
 
         /** The kept sign-in: "none", "ok", or "refused" (the last automatic sign-in was not accepted). */
         @JavascriptInterface
+        public String loginLast() {
+            return AutoLogin.last(MainActivity.this);
+        }
+
+        @JavascriptInterface
         public String loginState() {
             if (Secret.load(MainActivity.this) == null) return "none";
             return AutoLogin.refused(MainActivity.this) ? "refused" : "ok";

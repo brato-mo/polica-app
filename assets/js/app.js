@@ -589,8 +589,17 @@ function renderSettings() {
     const line = st === 'ok' ? 'Uključena. Kad te MYJYSK ili StoreFront odjavi, @APP@ se sama ponovo prijavi.'
       : st === 'refused' ? 'Lozinka nije prihvaćena (možda je promijenjena). Upiši novu, do tada se aplikacija ne prijavljuje sama.'
       : 'Isključena. Upiši korisničko ime i lozinku i aplikacija se sama prijavljuje kad te sistem odjavi.';
+    let last = '';
+    try {
+      const [at, what, host] = String((A.loginLast && A.loginLast()) || '').split('|');
+      const W = { sent: 'poslano korisničko ime i lozinka', refused: 'stranica je odbila lozinku', stopped: 'nije pokušano (lozinka ranije odbijena)', nologin: 'nije pokušano (nema sačuvane lozinke)', noform: 'stranica za prijavu otvorena, ali forma nije pronađena', link: 'otvorena nova sesija', error: 'greška pri popunjavanju' };
+      if (+at && W[what]) {
+        const d = new Date(+at);
+        last = `Zadnji pokušaj: ${d.getDate()}.${d.getMonth() + 1}. u ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${W[what]}${host ? ` (${esc(host)})` : ''}`;
+      }
+    } catch (e) { /* older shell */ }
     return `<section class="set-block"><h3>Prijava</h3><div class="set-card">
-    <div class="set-row"><div class="set-txt"><b>Automatska prijava</b><small class="${st === 'refused' ? 'is-bad' : ''}">${line}</small></div></div>
+    <div class="set-row"><div class="set-txt"><b>Automatska prijava</b><small class="${st === 'refused' ? 'is-bad' : ''}">${line}</small>${last ? `<small>${last}</small>` : ''}</div></div>
     ${act('login-set', st === 'none' ? 'Upiši korisničko ime i lozinku' : 'Promijeni korisničko ime i lozinku', 'Isti za MYJYSK, StoreFront i planograme. Ostaju samo na ovom telefonu, šifrovani.')}
     ${st !== 'none' ? act('login-forget', 'Zaboravi korisničko ime i lozinku', 'Brišu se s ovog telefona', true) : ''}
   </div></section>`;

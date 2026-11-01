@@ -97,6 +97,15 @@ final class AutoLogin {
         return prefs(c).getBoolean("refused", false) && Secret.load(c) != null;
     }
 
+    /** What the last automatic sign-in did, for the settings: "<time>|<what>|<page>". */
+    static String last(Context c) {
+        return prefs(c).getString("last", "");
+    }
+
+    private static void note(SharedPreferences p, String what, String host) {
+        p.edit().putString("last", System.currentTimeMillis() + "|" + what + "|" + (host == null ? "" : host)).apply();
+    }
+
     /** New user name and password saved: try again. */
     static void reset(Context c) {
         prefs(c).edit().clear().apply();
@@ -109,10 +118,16 @@ final class AutoLogin {
         if (!idp && !isSystemPage(ctx, url)) return;
         final Context c = ctx.getApplicationContext();
         final SharedPreferences p = prefs(c);
-        if (p.getBoolean("refused", false)) return;
-        final String[] cred = Secret.load(c);
-        if (cred == null) return;
         final String host = Uri.parse(url).getHost();
+        if (p.getBoolean("refused", false)) {
+            if (idp) note(p, "stopped", host);
+            return;
+        }
+        final String[] cred = Secret.load(c);
+        if (cred == null) {
+            if (idp) note(p, "nologin", host);
+            return;
+        }
         final Handler ui = new Handler(Looper.getMainLooper());
         final int[] tries = {0};
         // the page draws its form a moment after loading; look again a few times until it is there
@@ -150,13 +165,21 @@ final class AutoLogin {
                         public void onReceiveValue(String v) {
                             if (v == null) return;
                             if (v.contains("sent")) {
+                                note(p, "sent", host);
                                 java.util.Map<String, Long> m = TRIED.get(w);
                                 if (m == null) TRIED.put(w, m = new java.util.HashMap<>());
                                 m.put(host, System.currentTimeMillis());
                             } else if (v.contains("again")) {
                                 p.edit().putBoolean("refused", true).apply();
+                                note(p, "refused", host);
                             } else if (v.contains("none") && ++tries[0] < 5) {
                                 ui.postDelayed(again, 700); // the form is not drawn yet
+                            } else if (v.contains("none") && idp) {
+                                note(p, "noform", host); // on the sign-in page, but no form to fill was found
+                            } else if (v.contains("link")) {
+                                note(p, "link", host);
+                            } else if (v.contains("error")) {
+                                note(p, "error", host);
                             }
                         }
                     });
