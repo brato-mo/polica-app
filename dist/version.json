@@ -1,7 +1,7 @@
 {
- "code": 35,
- "name": "1.34",
- "notes": "Automatska prijava prolazi obje stranice za prijavu (StoreFront pa firma) i čeka da se forma pojavi",
+ "code": 36,
+ "name": "1.35",
+ "notes": "Postavke → Prijava pokazuju zadnji pokušaj automatske prijave (kad, šta se desilo, na kojoj stranici)",
  "size": 1929605,
- "sha256": "b392a9417d3de290706c9f67289a696b719eea26c6b9b63a3437053413a33dae"
+ "sha256": "aa6af6f73a9ca68e4fb62924c8e3b147260aa525abe48f95a48ae1572a656d8f"
 }
