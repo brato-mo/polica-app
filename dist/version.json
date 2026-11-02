@@ -1,7 +1,7 @@
 {
- "code": 39,
- "name": "1.38",
- "notes": "Minus lista: prava zamjenska šifra iz zalihe zamjenskih artikala; potvrda zamjena u aplikaciji (SAP HR broj i lozinka se upisuju svaki put, ne pamte se)",
- "size": 1942028,
- "sha256": "17e7f375acaf77fda202b809930ce20e9dade6fc014d1aab8bf10daaf2acda4c"
+ "code": 40,
+ "name": "1.39",
+ "notes": "Minus lista: dijeljena zamjenska šifra se ne troši dvaput, 'Treba tvoja odluka', 'Poslije ostaje', 'Pošalji samo Regulaciju' kad Regulacija ne prođe",
+ "size": 1946124,
+ "sha256": "000f9d0498c6ce69f9b44737867fa2d4d81ac11d2863a54c35bedd7e228860cd"
 }
