@@ -1013,7 +1013,7 @@ window.onMinus = (r) => {
 function minusRow(x) {
   const qty = `${Number.isInteger(x.qty) ? x.qty : String(x.qty).replace('.', ',')} ${esc(x.unit || 'KOM')}`;
   const sub = x.subs && x.subs.length
-    ? `<span class="pills"><span class="pill pill-order">Zamjena → ${x.subs.map((n) => esc(n) + (nameOf(n) ? ` ${esc(nameOf(n))}` : '')).join(', ')}</span></span>`
+    ? `<span class="pills"><span class="pill pill-order">Buduća zamjena: ${x.subs.map((n) => esc(n) + (nameOf(n) ? ` ${esc(nameOf(n))}` : '')).join(', ')}</span></span>`
     : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
   const line = `<span class="store-line minus-qty">${qty}${x.st ? ` · status ${esc(x.st)}` : ''}${x.blocked ? ` · blokirano ${esc(String(x.blocked))}` : ''}</span>`;
   if (S.index.byNum.has(x.num)) return itemRow(x.num, { sub: `${sub}${line}` });
@@ -1024,6 +1024,9 @@ function minusRow(x) {
 
 /** The shift plan for the articles with a replacement: what to type on Minus lista and on Regulacija zalihe. */
 function minusPlan(list) {
+  // off until the target number comes from StoreFront's "Zaliha zamjenskih artikala" (the replacement the goods are
+  // actually on); the future replacement number used before was wrong for that
+  if (!S.minusPlanOk) return '';
   const one = list.filter((x) => x.subs && x.subs.length === 1 && x.qty < 0);
   if (!one.length) return '';
   const done = S.user.minusDone || {};
