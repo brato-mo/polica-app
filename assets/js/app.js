@@ -1035,6 +1035,9 @@ function minusTarget(x) {
   return pos[0].stock >= Math.abs(x.qty) ? pos[0] : null;
 }
 
+/** The comments StoreFront takes (at most 50 characters): Minus lista, then Regulacija zalihe. */
+const minusComments = (x, t) => [`Zamjena: ${x.num} na 0, roba pod ${t.num}`, `Zamjena: prodano pod ${x.num}`];
+
 /** The shift plan: Minus lista back to 0 on the number in minus, Regulacija zalihe minus the same on the number with stock. */
 function minusPlan(list) {
   const one = list.filter((x) => minusTarget(x));
@@ -1042,8 +1045,6 @@ function minusPlan(list) {
   const done = S.user.minusDone || {};
   const key = (x, step) => `${x.num}|${x.qty}|${step}`;
   const q = (n) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','));
-  const today = new Date();
-  const d = `${today.getDate()}.${today.getMonth() + 1}.`;
   const row = (x, step) => {
     const k = key(x, step);
     const n = Math.abs(x.qty);
@@ -1051,9 +1052,7 @@ function minusPlan(list) {
     const what = step === 1
       ? `<b>${esc(x.num)}</b> ${esc(x.name)}<br>upiši brojano: <b>0</b> (sad ${q(x.qty)})`
       : `<b>${esc(t.num)}</b> ${esc(nameOf(t.num) || '')} (zaliha ${q(t.stock)})<br>ukloni <b>${q(n)}</b> · kod <b>53</b>`;
-    const com = step === 1
-      ? `Zamjena šifre: ${x.num} vraćeno na 0 (+${q(n)}), roba je pod šifrom ${t.num}. ${d}`
-      : `Zamjena šifre: ${t.num} umanjeno ${q(n)}, prodano pod šifrom ${x.num}. ${d}`;
+    const com = minusComments(x, t)[step - 1];
     return `<div class="mp-row${done[k] ? ' is-done' : ''}">
       <button class="mp-check" type="button" role="checkbox" aria-checked="${!!done[k]}" aria-label="Urađeno" data-mp-done="${esc(k)}"></button>
       <div class="mp-txt"><span>${what}</span><small>${esc(com)}</small></div>
@@ -1062,7 +1061,8 @@ function minusPlan(list) {
   const left = (step) => one.filter((x) => !done[key(x, step)]).length;
   const unclear = list.length - one.length;
   return `<section class="mj-sec mp"><div class="sec-head"><h2>Plan za smjenu</h2><small>${one.length} ${plural(one.length, 'zamjena', 'zamjene', 'zamjena')}</small></div>
-    <p class="att-from">Prvo svi na Minus listi pa jedna potvrda („Napravi potrebne prilagodbe“), zatim svi na Regulaciji zalihe pa jedna potvrda. Komentar je obavezan: tapni Kopiraj i zalijepi ga u StoreFrontu.</p>
+    <button class="btn btn-primary btn-block mp-apply" type="button" data-mp-apply ${S.minusApplying ? 'disabled' : ''}>${S.minusApplying ? 'Šaljem u StoreFront…' : `Potvrdi ${one.length} ${plural(one.length, 'zamjenu', 'zamjene', 'zamjena')} u aplikaciji`}</button>
+    <p class="att-from">Potvrda u aplikaciji šalje oba koraka odjednom, s komentarima, pod tvojim SAP HR brojem i lozinkom (ukucaš ih ti, ne pamte se). Ili ručno u StoreFrontu: prvo svi na Minus listi pa jedna potvrda, zatim svi na Regulaciji zalihe pa jedna potvrda.</p>
     <div class="mp-step"><div class="mp-head"><b>1. Minus lista</b><small>${left(1)} preostalo</small><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button></div>
       ${one.map((x) => row(x, 1)).join('')}</div>
     <div class="mp-step"><div class="mp-head"><b>2. Regulacija zalihe</b><small>${left(2)} preostalo</small><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
@@ -1071,9 +1071,53 @@ function minusPlan(list) {
   </section>`;
 }
 
+/** The lines the shift plan would send: number in minus, its replacement with stock, the two comments. */
+function minusApplyItems() {
+  const m = S.user.minus;
+  if (!m || !m.items) return [];
+  return m.items.filter((x) => minusTarget(x)).map((x) => {
+    const t = minusTarget(x);
+    const [c1, c2] = minusComments(x, t);
+    return { num: x.num, qty: x.qty, target: t.num, c1, c2 };
+  });
+}
+
+window.onMinusApplying = () => { S.minusApplying = true; if (top().id === 'minus') renderMinus(); };
+window.onMinusApplied = (r) => {
+  S.minusApplying = false;
+  const W = { empty: 'Upiši SAP HR broj i lozinku.', auth: 'StoreFront nije prihvatio SAP HR broj ili lozinku. Ništa nije poslano.', nonstore: 'StoreFront kaže da korisnik nije iz prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', wrongstore: 'StoreFront kaže da korisnik nije iz ove prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', login: 'StoreFront traži prijavu. Ništa nije poslano.' };
+  if (!r || r.state !== 'ok') {
+    const why = r && r.why || '';
+    let msg = W[why] || 'Slanje nije uspjelo. Ništa nije poslano.';
+    if (/^adjust/.test(why) || r && r.step === 'adjust') msg = 'Minus lista je ispravljena, ali Regulacija zalihe nije prošla. Uradi Regulaciju u StoreFrontu (plan je ispod).';
+    else if (r && r.step === 'minus' && /^minus|timeout/.test(why)) msg = 'Nije sigurno da je Minus lista ispravljena. Provjeri u StoreFrontu prije ponovnog slanja.';
+    toast(msg);
+  } else {
+    const n = (r.sent || []).length, k = (r.skipped || []).length;
+    toast(`${n ? `Poslano: ${n} ${plural(n, 'zamjena', 'zamjene', 'zamjena')}.` : 'Ništa nije poslano.'}${k ? ` Preskočeno ${k} (promijenilo se u međuvremenu).` : ''}`);
+    const d = S.user.minusDone || (S.user.minusDone = {});
+    const m = S.user.minus;
+    for (const num of r.sent || []) {
+      const x = m && m.items.find((i) => i.num === num);
+      if (x) { d[`${x.num}|${x.qty}|1`] = Date.now(); d[`${x.num}|${x.qty}|2`] = Date.now(); }
+    }
+    saveUser();
+    setTimeout(loadMinus, 2500);
+  }
+  if (top().id === 'minus') renderMinus();
+};
+
 function onMinusClick(ev) {
-  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page]');
+  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page],[data-mp-apply]');
   if (!t) return;
+  if ('mpApply' in t.dataset) {
+    if (S.minusApplying) return;
+    if (!S.user.minus || Date.now() - (S.user.minus.at || 0) > 15 * 60 * 1000) { toast('Lista je starija od 15 minuta. Osvježi je pa potvrdi.'); loadMinus(); return; }
+    const items = minusApplyItems();
+    if (!items.length) return;
+    try { A.minusApply(JSON.stringify(items)); } catch (e) { toast('Ova verzija aplikacije to ne zna.'); }
+    return;
+  }
   if (t.dataset.sfPage) { try { A.storefrontPage(t.dataset.sfPage); } catch (e) { toast('Ova verzija aplikacije to ne zna.'); } return; }
   if (t.dataset.mpCopy) {
     try { A.copyText(t.dataset.mpCopy); toast('Komentar kopiran'); } catch (e) { toast('Kopiranje ne radi u ovoj verziji.'); }

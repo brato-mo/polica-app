@@ -588,6 +588,103 @@ public class MainActivity extends Activity {
             .show();
     }
 
+    /** Only well-formed lines: a 7-digit number in minus, its replacement, and comments of at most 50 characters. */
+    private static JSONArray cleanApply(String json) {
+        JSONArray out = new JSONArray();
+        try {
+            JSONArray in = new JSONArray(json);
+            for (int i = 0; i < in.length() && out.length() < 100; i++) {
+                JSONObject r = in.optJSONObject(i);
+                if (r == null) continue;
+                String num = r.optString("num"), target = r.optString("target");
+                double qty = r.optDouble("qty", 0);
+                if (!num.matches("\\d{7}") || !target.matches("\\d{7}") || num.equals(target) || !(qty < 0) || qty < -9999) continue;
+                JSONObject c = new JSONObject();
+                c.put("num", num);
+                c.put("target", target);
+                c.put("qty", qty == Math.rint(qty) ? (Object) (long) qty : (Object) qty);
+                c.put("c1", cut50(r.optString("c1")));
+                c.put("c2", cut50(r.optString("c2")));
+                if (c.getString("c1").isEmpty() || c.getString("c2").isEmpty()) continue;
+                out.put(c);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private static String cut50(String s) {
+        s = s == null ? "" : s.replaceAll("[\\r\\n]+", " ").trim();
+        return s.length() > 50 ? s.substring(0, 50) : s;
+    }
+
+    private boolean applying;
+
+    private void showMinusApply(final JSONArray items) {
+        if (applying) return;
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding((int) (22 * d), (int) (8 * d), (int) (22 * d), 0);
+        StringBuilder sum = new StringBuilder();
+        sum.append("Šalje se u StoreFront pod tvojim imenom:\n\n1. Minus lista (vraćanje na 0):\n");
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject x = items.optJSONObject(i);
+            sum.append("   ").append(x.optString("num")).append(": ").append(x.opt("qty")).append(" → 0\n");
+        }
+        sum.append("\n2. Regulacija zalihe, kod 53:\n");
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject x = items.optJSONObject(i);
+            String q = String.valueOf(x.opt("qty"));
+            sum.append("   ").append(x.optString("target")).append(": ").append(q).append(" kom\n");
+        }
+        sum.append("\nSvaki red ima komentar. Prije slanja aplikacija još jednom provjeri Minus listu i preskoči ono što se u međuvremenu promijenilo.");
+        android.widget.TextView note = new android.widget.TextView(this);
+        note.setText(sum.toString());
+        note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        android.widget.ScrollView sc = new android.widget.ScrollView(this);
+        sc.addView(note);
+        box.addView(sc, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, (int) (220 * d)));
+        final android.widget.EditText user = new android.widget.EditText(this);
+        user.setHint("SAP HR broj");
+        user.setSingleLine(true);
+        user.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        final android.content.SharedPreferences hp = getSharedPreferences("sap", MODE_PRIVATE);
+        user.setText(hp.getString("hr", ""));
+        box.addView(user);
+        final android.widget.EditText pass = new android.widget.EditText(this);
+        pass.setHint("Lozinka");
+        pass.setSingleLine(true);
+        pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(pass);
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Potvrdi zamjene (" + items.length() + ")")
+            .setView(box)
+            .setPositiveButton("Potvrdi i pošalji", new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface di, int w) {
+                    String u = user.getText().toString().trim(), p = pass.getText().toString();
+                    pass.setText("");
+                    if (u.isEmpty() || p.isEmpty()) {
+                        runJs("window.onMinusApplied&&onMinusApplied({state:'error',why:'empty'})");
+                        return;
+                    }
+                    hp.edit().putString("hr", u).apply(); // the number only, never the password
+                    applying = true;
+                    runJs("window.onMinusApplying&&onMinusApplying()");
+                    MinusApply.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), u, p, items, new MinusApply.Callback() {
+                        @Override
+                        public void done(JSONObject result) {
+                            applying = false;
+                            runJs("window.onMinusApplied&&onMinusApplied(" + result + ")");
+                        }
+                    });
+                }
+            })
+            .setNegativeButton("Odustani", null)
+            .show();
+    }
+
     private static final int REQ_NOTIF = 9;
 
     // ----------------------------------------------------------------- bridge
@@ -601,6 +698,22 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     probeStore();
+                }
+            });
+        }
+
+        /**
+         * The employee confirms the minus-list corrections in the app: a native dialog shows what will be sent and asks
+         * for their own SAP HR number and password (typed by them, used once, never kept). Answer: window.onMinusApplied.
+         */
+        @JavascriptInterface
+        public void minusApply(final String itemsJson) {
+            final JSONArray items = cleanApply(itemsJson);
+            if (items.length() == 0) return;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    showMinusApply(items);
                 }
             });
         }

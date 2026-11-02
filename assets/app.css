@@ -1122,3 +1122,4 @@ svg { display: block; }
 .mp-txt small { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
 .mp-check { flex-shrink: 0; width: 26px; height: 26px; margin-top: 2px; border: 2px solid var(--line); border-radius: 8px; background: none; }
 .mp-check[aria-checked="true"] { border-color: var(--primary); background: var(--primary); box-shadow: inset 0 0 0 4px var(--surface); }
+.mp-apply { margin: 4px 0 10px; }
