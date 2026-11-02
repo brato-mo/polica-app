@@ -999,6 +999,9 @@ window.onMinus = (r) => {
   if (!r) return;
   if (r.how === 'ok') {
     S.user.minus = { at: r.at || Date.now(), items: r.items || [] };
+    const live = new Set((r.items || []).map((x) => `${x.num}|${x.qty}|`));
+    const d = S.user.minusDone || {};
+    for (const k of Object.keys(d)) if (!live.has(k.replace(/[12]$/, ''))) delete d[k];
     saveUser();
   } else {
     toast(r.how === 'login' ? 'StoreFront traži prijavu. Prijavi se (Narudžbe → Osvježi) pa pokušaj ponovo.' : 'Minus lista se nije mogla učitati. Pokušaj ponovo.');
@@ -1019,6 +1022,60 @@ function minusRow(x) {
     ${sub}<span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
 }
 
+/** The shift plan for the articles with a replacement: what to type on Minus lista and on Regulacija zalihe. */
+function minusPlan(list) {
+  const one = list.filter((x) => x.subs && x.subs.length === 1 && x.qty < 0);
+  if (!one.length) return '';
+  const done = S.user.minusDone || {};
+  const key = (x, step) => `${x.num}|${x.qty}|${step}`;
+  const q = (n) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','));
+  const today = new Date();
+  const d = `${today.getDate()}.${today.getMonth() + 1}.`;
+  const row = (x, step) => {
+    const k = key(x, step);
+    const n = Math.abs(x.qty);
+    const nw = x.subs[0];
+    const what = step === 1
+      ? `<b>${esc(x.num)}</b> ${esc(x.name)}<br>upiši brojano: <b>0</b> (sad ${q(x.qty)})`
+      : `<b>${esc(nw)}</b> ${esc(nameOf(nw) || '')}<br>ukloni <b>${q(n)}</b> · kod <b>53</b>`;
+    const com = step === 1
+      ? `Zamjena šifre ${x.num} → ${nw}, prodano pod starom šifrom. Vraćeno na 0 (+${q(n)}). ${d}`
+      : `Zamjena šifre ${x.num} → ${nw}: −${q(n)} prodano pod starom šifrom ${x.num}. ${d}`;
+    return `<div class="mp-row${done[k] ? ' is-done' : ''}">
+      <button class="mp-check" type="button" role="checkbox" aria-checked="${!!done[k]}" aria-label="Urađeno" data-mp-done="${esc(k)}"></button>
+      <div class="mp-txt"><span>${what}</span><small>${esc(com)}</small></div>
+      <button class="text-btn" type="button" data-mp-copy="${esc(com)}">Kopiraj</button></div>`;
+  };
+  const left = (step) => one.filter((x) => !done[key(x, step)]).length;
+  const multi = list.length - one.length;
+  return `<section class="mj-sec mp"><div class="sec-head"><h2>Plan za smjenu</h2><small>${one.length} ${plural(one.length, 'zamjena', 'zamjene', 'zamjena')}</small></div>
+    <p class="att-from">Prvo svi na Minus listi pa jedna potvrda („Napravi potrebne prilagodbe“), zatim svi na Regulaciji zalihe pa jedna potvrda. Komentar je obavezan: tapni Kopiraj i zalijepi ga u StoreFrontu.</p>
+    <div class="mp-step"><div class="mp-head"><b>1. Minus lista</b><small>${left(1)} preostalo</small><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button></div>
+      ${one.map((x) => row(x, 1)).join('')}</div>
+    <div class="mp-step"><div class="mp-head"><b>2. Regulacija zalihe</b><small>${left(2)} preostalo</small><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
+      ${one.map((x) => row(x, 2)).join('')}</div>
+    ${multi ? `<p class="empty">${multi} ${plural(multi, 'artikal ima', 'artikla imaju', 'artikala ima')} više zamjenskih šifri: odluči sam pod kojom je prodano.</p>` : ''}
+  </section>`;
+}
+
+function onMinusClick(ev) {
+  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page]');
+  if (!t) return;
+  if (t.dataset.sfPage) { try { A.storefrontPage(t.dataset.sfPage); } catch (e) { toast('Ova verzija aplikacije to ne zna.'); } return; }
+  if (t.dataset.mpCopy) {
+    try { A.copyText(t.dataset.mpCopy); toast('Komentar kopiran'); } catch (e) { toast('Kopiranje ne radi u ovoj verziji.'); }
+    return;
+  }
+  if (t.dataset.mpDone) {
+    const d = S.user.minusDone || (S.user.minusDone = {});
+    if (d[t.dataset.mpDone]) delete d[t.dataset.mpDone]; else d[t.dataset.mpDone] = Date.now();
+    saveUser();
+    renderMinus();
+    return;
+  }
+  if (t.dataset.num) openItem(t.dataset.num, { via: 'minus' });
+}
+
 function renderMinus() {
   const box = $('#minusBody');
   if (!box) return;
@@ -1030,6 +1087,7 @@ function renderMinus() {
   const noSub = items.filter((x) => !(x.subs && x.subs.length));
   box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
     <p class="att-from">Samo pregled. Ispravke radiš u StoreFrontu (Minus lista i Regulacija zalihe), s komentarom.</p>
+    ${minusPlan(withSub)}
     <section class="mj-sec"><div class="sec-head"><h2>Sa zamjenom</h2><small>${withSub.length}</small></div>
       ${withSub.length ? `<div class="list">${withSub.map(minusRow).join('')}</div>` : '<p class="empty">Nema artikala sa zamjenskom šifrom.</p>'}</section>
     <section class="mj-sec"><div class="sec-head"><h2>Bez zamjene</h2><small>${noSub.length}</small></div>
@@ -2545,7 +2603,7 @@ function bind() {
   for (const b of $$('[data-back]')) b.addEventListener('click', () => back());
   $('#attachBody').addEventListener('click', onAttachClick);
   $('#minusRefresh').addEventListener('click', () => loadMinus());
-  $('#minusBody').addEventListener('click', (ev) => { const t = ev.target.closest('[data-num]'); if (t) openItem(t.dataset.num, { via: 'minus' }); });
+  $('#minusBody').addEventListener('click', onMinusClick);
   $('#attachBack').addEventListener('click', () => { if (S.att && S.att.path) { try { A.myjyskOpen(S.att.path); } catch (e) { /* older shell */ } } else back(); });
   $('#scrim').addEventListener('click', () => { if (sheet.dismissible) closeSheet(); });
   $('#itemViewer').addEventListener('click', openViewerForItem);

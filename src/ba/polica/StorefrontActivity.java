@@ -45,6 +45,7 @@ public class StorefrontActivity extends Activity {
     static final String EXTRA_QUERY = "query";
     static final String EXTRA_MODE = "mode";
     static final String EXTRA_JSON = "json";
+    static final String EXTRA_PAGE = "page"; // "minus" or "adjust": open that StoreFront page to work in (view mode)
     private static final Pattern SAFE_QUERY = Pattern.compile("[0-9A-Za-z ]{1,40}");
     private static final long POLL_MS = 600;
     private static final long TIMEOUT_MS = 25000;
@@ -93,16 +94,24 @@ public class StorefrontActivity extends Activity {
         host = new StringBuilder(getString(R.string.storefront_host)).reverse().toString();
         query = getIntent().getStringExtra(EXTRA_QUERY);
         mode = getIntent().getStringExtra(EXTRA_MODE);
-        if (query == null || !SAFE_QUERY.matcher(query).matches()) {
-            finishWith(null, "bad");
-            return;
-        }
-        if (!"view".equals(mode)) mode = "lookup";
-        try {
-            target = "https://" + host + "/ui/article-search?query=" + URLEncoder.encode("\"" + query.trim() + "\"", "UTF-8");
-        } catch (Exception e) {
-            finishWith(null, "bad");
-            return;
+        String page = getIntent().getStringExtra(EXTRA_PAGE);
+        if ("minus".equals(page) || "adjust".equals(page)) {
+            // a StoreFront page the employee works in; nothing is read or filled by the app
+            mode = "view";
+            query = "";
+            target = "https://" + host + ("minus".equals(page) ? "/ui/minuslist" : "/ui/stock-adjustment");
+        } else {
+            if (query == null || !SAFE_QUERY.matcher(query).matches()) {
+                finishWith(null, "bad");
+                return;
+            }
+            if (!"view".equals(mode)) mode = "lookup";
+            try {
+                target = "https://" + host + "/ui/article-search?query=" + URLEncoder.encode("\"" + query.trim() + "\"", "UTF-8");
+            } catch (Exception e) {
+                finishWith(null, "bad");
+                return;
+            }
         }
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         int bg = dark ? 0xFF0E1014 : 0xFFF3F4F7;

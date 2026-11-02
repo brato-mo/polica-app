@@ -605,6 +605,33 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Opens a StoreFront page to work in: "minus" (Minus lista) or "adjust" (Regulacija zalihe). */
+        @JavascriptInterface
+        public void storefrontPage(final String page) {
+            if (!"minus".equals(page) && !"adjust".equals(page)) return;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    Intent i = new Intent(MainActivity.this, StorefrontActivity.class);
+                    i.putExtra(StorefrontActivity.EXTRA_PAGE, page);
+                    startActivity(i);
+                }
+            });
+        }
+
+        /** Puts a short text (a prepared comment) on the phone's clipboard. */
+        @JavascriptInterface
+        public void copyText(final String text) {
+            if (text == null || text.length() > 500) return;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    android.content.ClipboardManager cb = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (cb != null) cb.setPrimaryClip(android.content.ClipData.newPlainText("Komentar", text));
+                }
+            });
+        }
+
         /** Reads the store's minus list from StoreFront (only reads). Answer: window.onMinus. */
         @JavascriptInterface
         public void minus() {
