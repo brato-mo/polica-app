@@ -196,6 +196,7 @@ function back() {
   if (t.id === 'missing') renderMissing(t.state);
   if (t.id === 'changes') renderChanges(t.state);
   if (t.id === 'attach') renderAttach();
+  if (t.id === 'minus') renderMinus();
   if (t.id === 'plans') renderPlans();
   if (t.id === 'home') renderHome();
   return true;
@@ -962,6 +963,79 @@ function newsRow(st, a) {
   </button>${open ? `<div class="mj-text">${esc(a.text) || 'Bez teksta u pregledu.'}${a.path ? `<br><button class="text-btn" type="button" data-mj-open="${esc(a.path)}">Otvori vijest</button>` : ''}</div>` : ''}</div>`;
 }
 
+// ------------------------------------------------------------------ Minus lista (StoreFront, only read)
+
+function renderMinusBar() {
+  const b = $('#minusBar');
+  if (!b) return;
+  const has = S.plans.length > 0;
+  b.hidden = !has;
+  if (!has) return;
+  const m = S.user.minus;
+  const ic = icon('info');
+  if (!m || !m.items) {
+    b.innerHTML = `${ic}<span><b>Minus lista</b><small>Artikli u minusu, iz StoreFronta</small></span><span class="go">Učitaj</span>`;
+    return;
+  }
+  const sub = m.items.filter((x) => x.subs && x.subs.length).length;
+  b.innerHTML = `${ic}<span><b>Minus lista: ${m.items.length}</b><small>${sub} sa zamjenom · ${m.items.length - sub} bez zamjene · ${esc(ageText(m.at))}</small></span><span class="go">Otvori</span>`;
+}
+
+function loadMinus() {
+  if (S.minusBusy) return;
+  S.minusBusy = true;
+  try { A.minus(); } catch (e) { S.minusBusy = false; toast('Ova verzija aplikacije ne zna čitati Minus listu.'); }
+  if (top().id === 'minus') renderMinus();
+}
+
+function openMinus() {
+  renderMinus();
+  go('minus');
+  if (!S.user.minus || Date.now() - (S.user.minus.at || 0) > 10 * 60 * 1000) loadMinus();
+}
+
+window.onMinus = (r) => {
+  S.minusBusy = false;
+  if (!r) return;
+  if (r.how === 'ok') {
+    S.user.minus = { at: r.at || Date.now(), items: r.items || [] };
+    saveUser();
+  } else {
+    toast(r.how === 'login' ? 'StoreFront traži prijavu. Prijavi se (Narudžbe → Osvježi) pa pokušaj ponovo.' : 'Minus lista se nije mogla učitati. Pokušaj ponovo.');
+  }
+  if (top().id === 'minus') renderMinus();
+  if (top().id === 'home') renderHome();
+};
+
+function minusRow(x) {
+  const qty = `${Number.isInteger(x.qty) ? x.qty : String(x.qty).replace('.', ',')} ${esc(x.unit || 'KOM')}`;
+  const sub = x.subs && x.subs.length
+    ? `<span class="pills"><span class="pill pill-order">Zamjena → ${x.subs.map((n) => esc(n) + (nameOf(n) ? ` ${esc(nameOf(n))}` : '')).join(', ')}</span></span>`
+    : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
+  const line = `<span class="store-line minus-qty">${qty}${x.st ? ` · status ${esc(x.st)}` : ''}${x.blocked ? ` · blokirano ${esc(String(x.blocked))}` : ''}</span>`;
+  if (S.index.byNum.has(x.num)) return itemRow(x.num, { sub: `${sub}${line}` });
+  return `<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main">
+    <span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
+    ${sub}<span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
+}
+
+function renderMinus() {
+  const box = $('#minusBody');
+  if (!box) return;
+  const m = S.user.minus;
+  const busy = S.minusBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam Minus listu iz StoreFronta…</p>' : '';
+  if (!m || !m.items) { box.innerHTML = busy || '<p class="empty">Minus lista još nije učitana. Tapni osvježi gore desno.</p>'; return; }
+  const items = m.items.slice().sort((a, b) => a.qty - b.qty);
+  const withSub = items.filter((x) => x.subs && x.subs.length);
+  const noSub = items.filter((x) => !(x.subs && x.subs.length));
+  box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
+    <p class="att-from">Samo pregled. Ispravke radiš u StoreFrontu (Minus lista i Regulacija zalihe), s komentarom.</p>
+    <section class="mj-sec"><div class="sec-head"><h2>Sa zamjenom</h2><small>${withSub.length}</small></div>
+      ${withSub.length ? `<div class="list">${withSub.map(minusRow).join('')}</div>` : '<p class="empty">Nema artikala sa zamjenskom šifrom.</p>'}</section>
+    <section class="mj-sec"><div class="sec-head"><h2>Bez zamjene</h2><small>${noSub.length}</small></div>
+      ${noSub.length ? `<div class="list">${noSub.map(minusRow).join('')}</div>` : '<p class="empty">Nema.</p>'}</section>`;
+}
+
 // ------------------------------------------------- an Excel attachment of a news article
 
 const ATT_SHOWN = 150;
@@ -1312,7 +1386,7 @@ function renderHome() {
   $('#newsWrap').hidden = !nw;
   if (nw) {
     $('#homeStats').textContent = 'Zadaci i vijesti iz MYJYSK';
-    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar']) $(id).hidden = true;
+    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar']) $(id).hidden = true;
     for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
     renderNews();
     return;
@@ -1327,6 +1401,7 @@ function renderHome() {
   $('#recent').innerHTML = recent.length ? `<div class="list">${recent.map((r) => itemRow(r.num)).join('')}</div>` : '';
   renderOrdersBar();
   renderClearBar();
+  renderMinusBar();
   $('#recentEmpty').hidden = recent.length > 0;
   $('#recentHead').hidden = recent.length === 0;
   for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
@@ -2469,6 +2544,8 @@ function bind() {
   for (const b of $$('[data-scan]')) b.addEventListener('click', startScan);
   for (const b of $$('[data-back]')) b.addEventListener('click', () => back());
   $('#attachBody').addEventListener('click', onAttachClick);
+  $('#minusRefresh').addEventListener('click', () => loadMinus());
+  $('#minusBody').addEventListener('click', (ev) => { const t = ev.target.closest('[data-num]'); if (t) openItem(t.dataset.num, { via: 'minus' }); });
   $('#attachBack').addEventListener('click', () => { if (S.att && S.att.path) { try { A.myjyskOpen(S.att.path); } catch (e) { /* older shell */ } } else back(); });
   $('#scrim').addEventListener('click', () => { if (sheet.dismissible) closeSheet(); });
   $('#itemViewer').addEventListener('click', openViewerForItem);
@@ -2510,7 +2587,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
     if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
@@ -2525,6 +2602,7 @@ function bind() {
     }
     if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
+    if (t.id === 'minusBar') { openMinus(); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
     if (t.dataset.clrXmas) { S.clr.peek = !S.clr.peek; renderClearance(); return; }

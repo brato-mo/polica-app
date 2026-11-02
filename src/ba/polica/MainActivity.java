@@ -499,6 +499,27 @@ public class MainActivity extends Activity {
         });
     }
 
+    private boolean minusReading;
+
+    private void readMinus() {
+        if (minusReading) return;
+        minusReading = true;
+        MinusReader.run(this, (android.view.ViewGroup) getWindow().getDecorView(), new MinusReader.Callback() {
+            @Override
+            public void done(String how, org.json.JSONArray items) {
+                minusReading = false;
+                JSONObject o = new JSONObject();
+                try {
+                    o.put("how", how);
+                    o.put("at", System.currentTimeMillis());
+                    o.put("items", items == null ? new org.json.JSONArray() : items);
+                } catch (Exception ignored) {
+                }
+                runJs("window.onMinus&&onMinus(" + o + ")");
+            }
+        });
+    }
+
     private boolean mjReading;
 
     private void readMyjysk() {
@@ -580,6 +601,17 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     probeStore();
+                }
+            });
+        }
+
+        /** Reads the store's minus list from StoreFront (only reads). Answer: window.onMinus. */
+        @JavascriptInterface
+        public void minus() {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    readMinus();
                 }
             });
         }

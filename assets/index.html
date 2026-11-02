@@ -66,6 +66,7 @@
 
     <button class="orders-bar" id="ordersBar" type="button" hidden></button>
     <button class="orders-bar" id="clearBar" type="button" hidden></button>
+    <button class="orders-bar" id="minusBar" type="button" hidden></button>
 
     <div id="results" hidden></div>
 
@@ -163,6 +164,15 @@
     <button class="round-btn" type="button" id="clearRefresh" aria-label="Osvježi listu"><svg class="ico"><use href="#i-refresh"/></svg></button>
   </header>
   <div class="scroll" id="clearBody"></div>
+</section>
+
+<section id="minus" class="screen" aria-label="Minus lista">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">Minus lista</span>
+    <button class="round-btn" type="button" id="minusRefresh" aria-label="Osvježi minus listu"><svg class="ico"><use href="#i-refresh"/></svg></button>
+  </header>
+  <div class="scroll" id="minusBody"></div>
 </section>
 
 <!-- Settings -->

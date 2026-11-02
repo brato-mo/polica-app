@@ -1107,3 +1107,6 @@ svg { display: block; }
 .ord-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 8px 0 2px; padding: 7px 10px; border-radius: 10px; background: var(--primary-soft); color: var(--on-soft); font-size: 14px; font-weight: 700; line-height: 1.35; }
 .ord-note span { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.75; }
 .ol-st.is-done, .ord-row small.ord-done { color: var(--ink-3); font-weight: 700; }
+
+/* Minus lista */
+.minus-qty { color: var(--danger); }
