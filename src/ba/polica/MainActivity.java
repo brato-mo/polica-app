@@ -620,19 +620,23 @@ public class MainActivity extends Activity {
 
     private boolean applying;
 
-    private void showMinusApply(final JSONArray items) {
+    private void showMinusApply(final JSONArray items, final boolean adjustOnly) {
         if (applying) return;
         float d = getResources().getDisplayMetrics().density;
         android.widget.LinearLayout box = new android.widget.LinearLayout(this);
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding((int) (22 * d), (int) (8 * d), (int) (22 * d), 0);
         StringBuilder sum = new StringBuilder();
-        sum.append("Šalje se u StoreFront pod tvojim imenom:\n\n1. Minus lista (vraćanje na 0):\n");
-        for (int i = 0; i < items.length(); i++) {
-            JSONObject x = items.optJSONObject(i);
-            sum.append("   ").append(x.optString("num")).append(": ").append(x.opt("qty")).append(" → 0\n");
+        sum.append("Šalje se u StoreFront pod tvojim imenom:\n\n");
+        if (!adjustOnly) {
+            sum.append("1. Minus lista (vraćanje na 0):\n");
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject x = items.optJSONObject(i);
+                sum.append("   ").append(x.optString("num")).append(": ").append(x.opt("qty")).append(" → 0\n");
+            }
+            sum.append("\n2. ");
         }
-        sum.append("\n2. Regulacija zalihe, kod 53:\n");
+        sum.append("Regulacija zalihe, kod 53:\n");
         for (int i = 0; i < items.length(); i++) {
             JSONObject x = items.optJSONObject(i);
             String q = String.valueOf(x.opt("qty"));
@@ -658,7 +662,7 @@ public class MainActivity extends Activity {
         pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         box.addView(pass);
         new android.app.AlertDialog.Builder(this)
-            .setTitle("Potvrdi zamjene (" + items.length() + ")")
+            .setTitle((adjustOnly ? "Potvrdi regulaciju (" : "Potvrdi zamjene (") + items.length() + ")")
             .setView(box)
             .setPositiveButton("Potvrdi i pošalji", new android.content.DialogInterface.OnClickListener() {
                 @Override
@@ -672,7 +676,7 @@ public class MainActivity extends Activity {
                     hp.edit().putString("hr", u).apply(); // the number only, never the password
                     applying = true;
                     runJs("window.onMinusApplying&&onMinusApplying()");
-                    MinusApply.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), u, p, items, new MinusApply.Callback() {
+                    MinusApply.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), u, p, items, adjustOnly, new MinusApply.Callback() {
                         @Override
                         public void done(JSONObject result) {
                             applying = false;
@@ -713,7 +717,20 @@ public class MainActivity extends Activity {
             ui.post(new Runnable() {
                 @Override
                 public void run() {
-                    showMinusApply(items);
+                    showMinusApply(items, false);
+                }
+            });
+        }
+
+        /** Only Regulacija zalihe, for lines whose Minus lista part went through earlier. Answer: window.onMinusApplied. */
+        @JavascriptInterface
+        public void minusApplyAdjust(final String itemsJson) {
+            final JSONArray items = cleanApply(itemsJson);
+            if (items.length() == 0) return;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    showMinusApply(items, true);
                 }
             });
         }

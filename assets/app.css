@@ -1123,3 +1123,7 @@ svg { display: block; }
 .mp-check { flex-shrink: 0; width: 26px; height: 26px; margin-top: 2px; border: 2px solid var(--line); border-radius: 8px; background: none; }
 .mp-check[aria-checked="true"] { border-color: var(--primary); background: var(--primary); box-shadow: inset 0 0 0 4px var(--surface); }
 .mp-apply { margin: 4px 0 10px; }
+.mp-decide .mp-txt small { line-height: 1.4; }
+.mp-picks { margin: 6px 0 2px; }
+.mp-pending { border: 1.5px solid var(--danger); }
+.mp-pending .mp-apply, .mp-pending .text-btn { margin: 8px 14px 12px; width: auto; }

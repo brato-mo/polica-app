@@ -33,9 +33,9 @@ final class MinusApply {
     private MinusApply() {
     }
 
-    static void run(Context ctx, ViewGroup parent, String user, String pass, JSONArray items, Callback cb) {
+    static void run(Context ctx, ViewGroup parent, String user, String pass, JSONArray items, boolean adjustOnly, Callback cb) {
         try {
-            run0(ctx, parent, user, pass, items, cb);
+            run0(ctx, parent, user, pass, items, adjustOnly, cb);
         } catch (Throwable e) {
             cb.done(err("start"));
         }
@@ -51,7 +51,7 @@ final class MinusApply {
         return o;
     }
 
-    private static void run0(Context ctx, final ViewGroup parent, String user, String pass, JSONArray items, final Callback cb) throws Exception {
+    private static void run0(Context ctx, final ViewGroup parent, String user, String pass, JSONArray items, boolean adjustOnly, final Callback cb) throws Exception {
         final Handler ui = new Handler(Looper.getMainLooper());
         final String host = new StringBuilder(ctx.getString(R.string.storefront_host)).reverse().toString();
         InputStream in = ctx.getAssets().open("minus-apply.js");
@@ -64,6 +64,7 @@ final class MinusApply {
         input.put("user", user);
         input.put("pass", pass);
         input.put("items", items);
+        input.put("mode", adjustOnly ? "adjust" : "both");
         final String[] script = {"window.__mx=null;window.__mxIn=" + input + ";" + bo.toString("UTF-8")};
         final WebView w = new WebView(ctx.getApplicationContext());
         WebSettings st = w.getSettings();

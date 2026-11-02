@@ -9,6 +9,7 @@
   if (!IN || window.__mx && window.__mx.state === 'busy') return;
   window.__mx = { state: 'busy', step: 'start' };
   var user = String(IN.user || ''), pass = String(IN.pass || '');
+  var ADJUST_ONLY = IN.mode === 'adjust'; // Minus lista went through earlier: only Regulacija zalihe is sent
   IN.pass = null;
   function s(v, n) { v = v == null ? '' : String(v).trim(); return v.length > n ? v.slice(0, n) : v; }
   function req(method, u, body) {
@@ -34,15 +35,18 @@
   }).then(function (list) {
     var now = {};
     (list || []).forEach(function (x) { now[s(x.articleId, 10)] = +x.totalStock; });
-    // the lines that still stand as the employee saw them: same minus, and the replacement still has the stock
+    var need = {}; // the stock each replacement must still have for all the lines sent together
+    IN.items.forEach(function (it) { need[it.target] = (need[it.target] || 0) + Math.abs(it.qty); });
+    // the lines that still stand as the employee saw them: same minus (Minus lista lines), and the replacement still
+    // has the stock for all of them
     return Promise.all(IN.items.map(function (it) {
-      if (now[it.num] !== it.qty) return Promise.resolve({ it: it, ok: false, why: 'promijenjeno' });
+      if (!ADJUST_ONLY && now[it.num] !== it.qty) return Promise.resolve({ it: it, ok: false, why: 'promijenjeno' });
       return req('GET', '/api/v1/article/masterdata?article=' + it.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm')
         .then(json).then(function (j) {
           var a = Array.isArray(j) ? j[0] : j;
           var c = ((a && a.substitutionChain) || []).filter(function (z) { return s(z.articleNumber, 10) === it.target; })[0];
           var st = c && c.smDmData && typeof c.smDmData.stock === 'number' ? c.smDmData.stock : c && c.atp ? c.atp.quantity : null;
-          return { it: it, ok: typeof st === 'number' && st >= Math.abs(it.qty), why: 'zaliha zamjene se promijenila' };
+          return { it: it, ok: typeof st === 'number' && st >= need[it.target], why: 'zaliha zamjene se promijenila' };
         });
     }));
   }).then(function (checked) {
@@ -62,6 +66,8 @@
     }).then(function (r) {
       if (r.status === 401) throw 'auth';
       if (!r.ok) throw 'http ' + r.status;
+      window.__mx.sent = go.map(function (it) { return it.num; });
+      if (ADJUST_ONLY) return { ok: true };
       window.__mx.step = 'minus';
       // 1. Minus lista: the number in minus counted 0, as the Minus lista page sends it (reason 103, quantity =
       // counted - stock)
@@ -83,6 +89,7 @@
     });
   }).catch(function (e) {
     var step = window.__mx && window.__mx.step;
-    done({ state: 'error', why: s(e, 40), step: step });
+    var sent = window.__mx && window.__mx.sent;
+    done({ state: 'error', why: s(e, 40), step: step, sent: step === 'adjust' ? sent : undefined });
   });
 })();
