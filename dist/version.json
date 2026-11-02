@@ -1,7 +1,7 @@
 {
- "code": 38,
- "name": "1.37",
- "notes": "Minus lista: plan za smjenu za zamjene (Minus lista na 0, pa Regulacija kod 53), komentari za kopiranje, kvačice i dugmad za StoreFront",
- "size": 1937865,
- "sha256": "029caf7a4a19626e9fba33320fc96b72f001623c58a574ad65677db1a1ad8153"
+ "code": 39,
+ "name": "1.38",
+ "notes": "Minus lista: prava zamjenska šifra iz zalihe zamjenskih artikala; potvrda zamjena u aplikaciji (SAP HR broj i lozinka se upisuju svaki put, ne pamte se)",
+ "size": 1942028,
+ "sha256": "17e7f375acaf77fda202b809930ce20e9dade6fc014d1aab8bf10daaf2acda4c"
 }
