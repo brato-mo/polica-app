@@ -1,7 +1,7 @@
 {
- "code": 37,
- "name": "1.36",
- "notes": "Minus lista: novi ekran iz StoreFronta (samo pregled), podijeljen na artikle sa zamjenskom šifrom i bez nje",
- "size": 1933769,
- "sha256": "0d1d97acec931f9007dfc97dd8b444b086e223bb7e40753f5c769bd80e0690f2"
+ "code": 38,
+ "name": "1.37",
+ "notes": "Minus lista: plan za smjenu za zamjene (Minus lista na 0, pa Regulacija kod 53), komentari za kopiranje, kvačice i dugmad za StoreFront",
+ "size": 1937865,
+ "sha256": "029caf7a4a19626e9fba33320fc96b72f001623c58a574ad65677db1a1ad8153"
 }
