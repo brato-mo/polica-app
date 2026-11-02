@@ -1,7 +1,7 @@
 {
- "code": 36,
- "name": "1.35",
- "notes": "Postavke → Prijava pokazuju zadnji pokušaj automatske prijave (kad, šta se desilo, na kojoj stranici)",
- "size": 1929605,
- "sha256": "aa6af6f73a9ca68e4fb62924c8e3b147260aa525abe48f95a48ae1572a656d8f"
+ "code": 37,
+ "name": "1.36",
+ "notes": "Minus lista: novi ekran iz StoreFronta (samo pregled), podijeljen na artikle sa zamjenskom šifrom i bez nje",
+ "size": 1933769,
+ "sha256": "0d1d97acec931f9007dfc97dd8b444b086e223bb7e40753f5c769bd80e0690f2"
 }
