@@ -977,7 +977,7 @@ function renderMinusBar() {
     b.innerHTML = `${ic}<span><b>Minus lista</b><small>Artikli u minusu, iz StoreFronta</small></span><span class="go">Učitaj</span>`;
     return;
   }
-  const sub = m.items.filter((x) => x.subs && x.subs.length).length;
+  const sub = m.items.filter((x) => chainOf(x).length).length;
   b.innerHTML = `${ic}<span><b>Minus lista: ${m.items.length}</b><small>${sub} sa zamjenom · ${m.items.length - sub} bez zamjene · ${esc(ageText(m.at))}</small></span><span class="go">Otvori</span>`;
 }
 
@@ -1012,8 +1012,11 @@ window.onMinus = (r) => {
 
 function minusRow(x) {
   const qty = `${Number.isInteger(x.qty) ? x.qty : String(x.qty).replace('.', ',')} ${esc(x.unit || 'KOM')}`;
-  const sub = x.subs && x.subs.length
-    ? `<span class="pills"><span class="pill pill-order">Buduća zamjena: ${x.subs.map((n) => esc(n) + (nameOf(n) ? ` ${esc(nameOf(n))}` : '')).join(', ')}</span></span>`
+  const ch = chainOf(x);
+  const t = minusTarget(x);
+  const sub = ch.length
+    ? `<span class="pills">${t ? `<span class="pill pill-order">Roba pod šifrom ${esc(t.num)} (${esc(String(t.stock))} kom)</span>` : ''}</span>
+       <span class="store-line">Zaliha zamjenskih: ${ch.map((c) => `${esc(c.num)}${c.st ? ` (${esc(c.st)})` : ''}${typeof c.stock === 'number' ? ` ${esc(String(c.stock))}` : ''}`).join(' · ')}</span>`
     : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
   const line = `<span class="store-line minus-qty">${qty}${x.st ? ` · status ${esc(x.st)}` : ''}${x.blocked ? ` · blokirano ${esc(String(x.blocked))}` : ''}</span>`;
   if (S.index.byNum.has(x.num)) return itemRow(x.num, { sub: `${sub}${line}` });
@@ -1022,12 +1025,19 @@ function minusRow(x) {
     ${sub}<span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
 }
 
-/** The shift plan for the articles with a replacement: what to type on Minus lista and on Regulacija zalihe. */
+/** The substitution chain with the store's stock of each number ({num, st, stock}); an older read kept only future
+ * replacement numbers, which are not where the goods are: those are left out until the next read. */
+const chainOf = (x) => (x.subs || []).filter((c) => c && typeof c === 'object');
+/** The number the goods really are under: the one chain number with stock, enough to cover the minus. */
+function minusTarget(x) {
+  const pos = chainOf(x).filter((c) => typeof c.stock === 'number' && c.stock > 0);
+  if (pos.length !== 1 || x.qty >= 0) return null;
+  return pos[0].stock >= Math.abs(x.qty) ? pos[0] : null;
+}
+
+/** The shift plan: Minus lista back to 0 on the number in minus, Regulacija zalihe minus the same on the number with stock. */
 function minusPlan(list) {
-  // off until the target number comes from StoreFront's "Zaliha zamjenskih artikala" (the replacement the goods are
-  // actually on); the future replacement number used before was wrong for that
-  if (!S.minusPlanOk) return '';
-  const one = list.filter((x) => x.subs && x.subs.length === 1 && x.qty < 0);
+  const one = list.filter((x) => minusTarget(x));
   if (!one.length) return '';
   const done = S.user.minusDone || {};
   const key = (x, step) => `${x.num}|${x.qty}|${step}`;
@@ -1037,27 +1047,27 @@ function minusPlan(list) {
   const row = (x, step) => {
     const k = key(x, step);
     const n = Math.abs(x.qty);
-    const nw = x.subs[0];
+    const t = minusTarget(x);
     const what = step === 1
       ? `<b>${esc(x.num)}</b> ${esc(x.name)}<br>upiši brojano: <b>0</b> (sad ${q(x.qty)})`
-      : `<b>${esc(nw)}</b> ${esc(nameOf(nw) || '')}<br>ukloni <b>${q(n)}</b> · kod <b>53</b>`;
+      : `<b>${esc(t.num)}</b> ${esc(nameOf(t.num) || '')} (zaliha ${q(t.stock)})<br>ukloni <b>${q(n)}</b> · kod <b>53</b>`;
     const com = step === 1
-      ? `Zamjena šifre ${x.num} → ${nw}, prodano pod starom šifrom. Vraćeno na 0 (+${q(n)}). ${d}`
-      : `Zamjena šifre ${x.num} → ${nw}: −${q(n)} prodano pod starom šifrom ${x.num}. ${d}`;
+      ? `Zamjena šifre: ${x.num} vraćeno na 0 (+${q(n)}), roba je pod šifrom ${t.num}. ${d}`
+      : `Zamjena šifre: ${t.num} umanjeno ${q(n)}, prodano pod šifrom ${x.num}. ${d}`;
     return `<div class="mp-row${done[k] ? ' is-done' : ''}">
       <button class="mp-check" type="button" role="checkbox" aria-checked="${!!done[k]}" aria-label="Urađeno" data-mp-done="${esc(k)}"></button>
       <div class="mp-txt"><span>${what}</span><small>${esc(com)}</small></div>
       <button class="text-btn" type="button" data-mp-copy="${esc(com)}">Kopiraj</button></div>`;
   };
   const left = (step) => one.filter((x) => !done[key(x, step)]).length;
-  const multi = list.length - one.length;
+  const unclear = list.length - one.length;
   return `<section class="mj-sec mp"><div class="sec-head"><h2>Plan za smjenu</h2><small>${one.length} ${plural(one.length, 'zamjena', 'zamjene', 'zamjena')}</small></div>
     <p class="att-from">Prvo svi na Minus listi pa jedna potvrda („Napravi potrebne prilagodbe“), zatim svi na Regulaciji zalihe pa jedna potvrda. Komentar je obavezan: tapni Kopiraj i zalijepi ga u StoreFrontu.</p>
     <div class="mp-step"><div class="mp-head"><b>1. Minus lista</b><small>${left(1)} preostalo</small><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button></div>
       ${one.map((x) => row(x, 1)).join('')}</div>
     <div class="mp-step"><div class="mp-head"><b>2. Regulacija zalihe</b><small>${left(2)} preostalo</small><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
       ${one.map((x) => row(x, 2)).join('')}</div>
-    ${multi ? `<p class="empty">${multi} ${plural(multi, 'artikal ima', 'artikla imaju', 'artikala ima')} više zamjenskih šifri: odluči sam pod kojom je prodano.</p>` : ''}
+    ${unclear ? `<p class="empty">${unclear} ${plural(unclear, 'artikal sa zamjenama nije', 'artikla sa zamjenama nisu', 'artikala sa zamjenama nije')} u planu: nijedna ili više zamjenskih šifri imaju zalihu, ili zaliha ne pokriva minus. Odluči sam.</p>` : ''}
   </section>`;
 }
 
@@ -1086,8 +1096,8 @@ function renderMinus() {
   const busy = S.minusBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam Minus listu iz StoreFronta…</p>' : '';
   if (!m || !m.items) { box.innerHTML = busy || '<p class="empty">Minus lista još nije učitana. Tapni osvježi gore desno.</p>'; return; }
   const items = m.items.slice().sort((a, b) => a.qty - b.qty);
-  const withSub = items.filter((x) => x.subs && x.subs.length);
-  const noSub = items.filter((x) => !(x.subs && x.subs.length));
+  const withSub = items.filter((x) => chainOf(x).length);
+  const noSub = items.filter((x) => !chainOf(x).length);
   box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
     <p class="att-from">Samo pregled. Ispravke radiš u StoreFrontu (Minus lista i Regulacija zalihe), s komentarom.</p>
     ${minusPlan(withSub)}

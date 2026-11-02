@@ -13,30 +13,47 @@
       return r.json();
     });
   }
+  var store = '', catalog = '';
+  // the article's substitution chain with the store's stock of each number: what the Minus lista page shows as
+  // "Zaliha zamjenskih artikala"
+  function chain(num) {
+    if (!catalog) return Promise.resolve([]);
+    return get('/api/v1/article/masterdata?article=' + num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm')
+      .then(function (j) {
+        var a = Array.isArray(j) ? j[0] : j;
+        return ((a && a.substitutionChain) || []).map(function (c) {
+          var stock = c.smDmData && typeof c.smDmData.stock === 'number' ? c.smDmData.stock : c.atp && typeof c.atp.quantity === 'number' ? c.atp.quantity : 0;
+          return { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), stock: stock };
+        }).filter(function (c) { return /^\d{7}$/.test(c.num) && c.num !== num; }).slice(0, 12);
+      }).catch(function (e) { if (e === 'login') throw e; return []; });
+  }
   get('/api/v1/websapapi/user-details').then(function (u) {
     var si = u && u.userDetails && u.userDetails.storeInfo;
-    var store = si && s(si.storeId, 10);
+    store = si && s(si.storeId, 10);
+    catalog = si && s(si.catalogId, 30);
     if (!/^[0-9A-Za-z]{1,10}$/.test(store || '')) throw 'store';
+    if (!/^[0-9A-Za-z-]{1,30}$/.test(catalog || '')) catalog = '';
     return get('/api/v1/minus-list/' + encodeURIComponent(store) + '?include=Article');
   }).then(function (list) {
     if (!Array.isArray(list)) throw 'shape';
-    window.__ml = {
-      state: 'ok',
-      items: list.slice(0, 500).map(function (x) {
-        var a = x.article || {};
-        var subs = (Array.isArray(a.substitutionsFuture) ? a.substitutionsFuture : []).map(function (n) { return s(n, 10); }).filter(function (n) { return /^\d{7}$/.test(n); });
-        return {
-          num: s(x.articleId || a.articleNumber, 10),
-          name: s(a.title, 120),
-          st: s(a.statusCode, 3),
-          qty: +x.totalStock || 0,
-          blocked: +x.blockedStock || 0,
-          unit: s(a.unit, 6),
-          group: s(a.groupTitle, 60),
-          subs: subs.slice(0, 3),
-        };
-      }).filter(function (x) { return /^\d{7}$/.test(x.num); }),
-    };
+    var items = list.slice(0, 300).map(function (x) {
+      var a = x.article || {};
+      return {
+        num: s(x.articleId || a.articleNumber, 10),
+        name: s(a.title, 120),
+        st: s(a.statusCode, 3),
+        qty: +x.totalStock || 0,
+        blocked: +x.blockedStock || 0,
+        unit: s(a.unit, 6),
+        group: s(a.groupTitle, 60),
+        subs: [],
+      };
+    }).filter(function (x) { return /^\d{7}$/.test(x.num); });
+    return Promise.all(items.map(function (x) {
+      return chain(x.num).then(function (c) { x.subs = c; return x; });
+    }));
+  }).then(function (items) {
+    window.__ml = { state: 'ok', items: items };
   }).catch(function (e) {
     window.__ml = { state: e === 'login' ? 'login' : 'error', why: s(e, 60) };
   });

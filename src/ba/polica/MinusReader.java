@@ -79,7 +79,7 @@ final class MinusReader {
             @Override
             public void run() {
                 if (over[0]) return;
-                if (System.currentTimeMillis() - t0 > 40000) {
+                if (System.currentTimeMillis() - t0 > 60000) {
                     String u = w.getUrl();
                     boolean away = u != null && !host.equals(Uri.parse(u).getHost());
                     finish(away ? "login" : "error", null);
@@ -154,9 +154,17 @@ final class MinusReader {
                 c.put("blocked", Math.max(-99999, Math.min(99999, r.optDouble("blocked", 0))));
                 c.put("unit", cut(r.optString("unit"), 6));
                 c.put("group", cut(r.optString("group"), 60));
-                JSONArray subs = new JSONArray();
+                JSONArray subs = new JSONArray(); // the substitution chain: number, status, the store's stock
                 JSONArray s = r.optJSONArray("subs");
-                for (int k = 0; s != null && k < s.length() && k < 3; k++) if (s.optString(k).matches("\\d{7}")) subs.put(s.optString(k));
+                for (int k = 0; s != null && k < s.length() && subs.length() < 12; k++) {
+                    JSONObject e = s.optJSONObject(k);
+                    if (e == null || !e.optString("num").matches("\\d{7}")) continue;
+                    JSONObject z = new JSONObject();
+                    z.put("num", e.optString("num"));
+                    z.put("st", cut(e.optString("st"), 3).replaceAll("[^0-9]", ""));
+                    z.put("stock", Math.max(-99999, Math.min(99999, e.optDouble("stock", 0))));
+                    subs.put(z);
+                }
                 c.put("subs", subs);
                 out.put(c);
             } catch (Exception ignored) {
