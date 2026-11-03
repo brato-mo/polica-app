@@ -860,7 +860,8 @@ function siteDiff() {
 
 function renderOrdersBar() {
   const b = $('#ordersBar');
-  const has = S.plans.length > 0;
+  // customer orders come from StoreFront: they work without any planogram on the phone
+  const has = S.plans.length > 0 || S.mode === 'orders';
   b.hidden = !has;
   if (!has) return;
   const o = S.user.orders;
@@ -1634,7 +1635,7 @@ function renderHome() {
   $('#planCount').hidden = !has;
   const count = S.index.names.length;
   const ol = S.user.orders && S.user.orders.list;
-  $('#homeStats').textContent = has && S.mode === 'orders'
+  $('#homeStats').textContent = S.mode === 'orders'
     ? (ol ? `${ol.length} ${plural(ol.length, 'narudžba', 'narudžbe', 'narudžbi')} kupaca` : 'Narudžbe još nisu učitane')
     : has
       ? `${artikala(count)} u ${S.plans.length} ${plural(S.plans.length, 'planogramu', 'planograma', 'planograma')}`
@@ -1650,12 +1651,13 @@ function renderHome() {
     renderNews();
     return;
   }
-  $('#welcome').hidden = has;
-  $('#searchForm').hidden = !has;
-  $('#homeDock').hidden = !has;
+  const ord = S.mode === 'orders';
+  $('#welcome').hidden = has || ord;
+  $('#searchForm').hidden = !(has || ord);
+  $('#homeDock').hidden = !(has || ord);
   const q = $('#q').value.trim();
-  $('#results').hidden = !has || !q;
-  $('#recentWrap').hidden = !has || !!q;
+  $('#results').hidden = !(has || ord) || !q;
+  $('#recentWrap').hidden = !(has || ord) || !!q;
   const favs = (S.user.favs || []).filter((n) => S.index.byNum.has(n));
   const recent = S.user.recent.filter((r) => S.index.byNum.has(r.num) && !favs.includes(r.num));
   $('#favWrap').hidden = !favs.length;
@@ -1668,7 +1670,7 @@ function renderHome() {
   $('#recentHead').hidden = recent.length === 0;
   for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
   $('#q').placeholder = S.mode === 'orders' ? 'Šifra artikla, ime kupca ili telefon' : 'Šifra ili naziv artikla';
-  if (S.mode === 'orders' && has) { runOrdersSearch(); return; }
+  if (S.mode === 'orders') { runOrdersSearch(); return; }
   if (q) runSearch();
 }
 
