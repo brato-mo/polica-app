@@ -1,7 +1,7 @@
 {
- "code": 41,
- "name": "1.40",
- "notes": "Prijava iz postavki i za potvrdu Minus liste; MYJYSK bez petlje učitavanja; favoriti, kopiranje šifre, kompaktne narudžbe; narudžbe rade i bez planograma",
- "size": 1950220,
- "sha256": "37c938a9de4d4fb98873d28c745699da94abd38c4ead779206d18b61a4ea58ef"
+ "code": 42,
+ "name": "1.41",
+ "notes": "Prijava odmah pri pokretanju aplikacije, bez ulaska u Postavke",
+ "size": 1954316,
+ "sha256": "3076cadd9304ec6dbc2a6505a59e349435f17c2bed51adb1696d34780adf69ee"
 }
