@@ -42,16 +42,16 @@ async function open(mode) {
 }
 {
   const { page, errors } = await open('ok-after');
-  await page.fill('#gateUser', '294641'); await page.fill('#gatePass', 'tajna');
+  await page.fill('#gateUser', '100200'); await page.fill('#gatePass', 'tajna');
   await page.click('#gateGo'); await page.waitForTimeout(200);
-  check('typed login goes to the app once', await page.evaluate(() => JSON.stringify(window.__saved)) === '["294641","tajna"]');
+  check('typed login goes to the app once', await page.evaluate(() => JSON.stringify(window.__saved)) === '["100200","tajna"]');
   check('closed after a good login', !(await page.isVisible('#gate')));
   await page.close();
   if (errors.length) { console.log(errors); bad++; }
 }
 {
   const { page, errors } = await open('refused-case');
-  await page.fill('#gateUser', '294641'); await page.fill('#gatePass', 'krivo');
+  await page.fill('#gateUser', '100200'); await page.fill('#gatePass', 'krivo');
   await page.click('#gateGo'); await page.waitForTimeout(200);
   check('refused password stays on the first screen with a message', (await page.isVisible('#gate')) && /ne prihvata/.test(await page.textContent('#gateMsg')));
   await page.screenshot({ path: 'out/gate-refused.png' });
