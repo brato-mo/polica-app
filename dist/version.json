@@ -1,7 +1,7 @@
 {
- "code": 40,
- "name": "1.39",
- "notes": "Minus lista: dijeljena zamjenska šifra se ne troši dvaput, 'Treba tvoja odluka', 'Poslije ostaje', 'Pošalji samo Regulaciju' kad Regulacija ne prođe",
- "size": 1946124,
- "sha256": "000f9d0498c6ce69f9b44737867fa2d4d81ac11d2863a54c35bedd7e228860cd"
+ "code": 41,
+ "name": "1.40",
+ "notes": "Prijava iz postavki i za potvrdu Minus liste; MYJYSK bez petlje učitavanja; favoriti, kopiranje šifre, kompaktne narudžbe; narudžbe rade i bez planograma",
+ "size": 1950220,
+ "sha256": "37c938a9de4d4fb98873d28c745699da94abd38c4ead779206d18b61a4ea58ef"
 }
