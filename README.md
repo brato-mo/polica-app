@@ -29,3 +29,13 @@ and see the module, shelf and notch, with the product highlighted on the planogr
 
 `./release.sh <version name> "<notes>"` builds, copies the APK to `dist/`, writes `dist/version.json`
 (version code, name, notes, size, SHA-256) and pushes.
+
+`TEST=1 ./build.sh` builds a test version that installs next to the real app (package `ba.polica.test`, name with
+"TEST", its own data, its own key `keystore/test.jks` made on the spot), so a new version can be tried without
+touching the real app. When `dx` is not in the tools, `d8` is used.
+
+## Tests
+
+`node --test tests/*.test.mjs` (minus-list sending, MYJYSK reader, news logic) and, with Playwright,
+`node tests/autologin.test.mjs` (the sign-in page script) and `node tests/ui-smoke.mjs` (the interface with a fake
+phone bridge).

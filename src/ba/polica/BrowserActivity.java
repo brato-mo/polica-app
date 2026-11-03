@@ -72,6 +72,8 @@ public class BrowserActivity extends Activity {
     private Handler handler;
     private boolean dark, reader = true, finished, taking;
     private int zoomAt;
+    private int fixes; // reloads after the session ran out or MYJYSK showed its own error: at most two
+    private long lastFix;
     private int ink, ink2, blue, card, softBg;
     private final Runnable poll = new Runnable() {
         @Override
@@ -144,6 +146,7 @@ public class BrowserActivity extends Activity {
         refresh.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                fixes = 0;
                 if (web != null) web.reload();
             }
         });
@@ -386,11 +389,20 @@ public class BrowserActivity extends Activity {
 
     /** Looks whether the reader read an Excel attachment; takes it once. */
     private void look() {
-        if (finished || taking || web == null || !isArticle(web.getUrl())) return;
-        web.evaluateJavascript("(function(j){return j&&j.open?'1':''})(window.__jr)", new ValueCallback<String>() {
+        if (finished || taking || web == null || !onHost(web.getUrl()) || web.getProgress() < 100) return;
+        // "1": the reader read an Excel attachment; "login": its calls were refused (the session ran out); "err":
+        // MYJYSK shows its own "An error occurred" (the page's calls failed, mostly right after the session ran out)
+        web.evaluateJavascript("(function(j){if(j&&j.open)return '1';if(j&&j.state==='login')return 'login';"
+            + "var b=document.body;return b&&/an error occurred|došlo je do greške/i.test((b.innerText||'').slice(0,4000))?'err':''})(window.__jr)",
+            new ValueCallback<String>() {
             @Override
             public void onReceiveValue(String v) {
-                if (v == null || !v.contains("1") || taking) return;
+                if (v == null || finished) return;
+                if (v.contains("login") || v.contains("err")) {
+                    fix(v.contains("login"));
+                    return;
+                }
+                if (!v.contains("1") || taking) return;
                 taking = true;
                 web.evaluateJavascript("(function(){var o=window.__jr.open;window.__jr.open=null;return JSON.stringify(o)})()", new ValueCallback<String>() {
                     @Override
@@ -425,6 +437,26 @@ public class BrowserActivity extends Activity {
                 });
             }
         });
+    }
+
+    /**
+     * The session ran out or MYJYSK failed: a full reload lets the company sign-in run with the kept login (AutoLogin).
+     * At most two reloads, a few seconds apart; then a plain message says what happened instead of loading forever.
+     */
+    private void fix(boolean login) {
+        long now = System.currentTimeMillis();
+        if (now - lastFix < 6000) return;
+        lastFix = now;
+        if (fixes < 2) {
+            fixes++;
+            Toast.makeText(this, login ? "Sesija je istekla, ponovo se prijavljujem…" : "MYJYSK je vratio grešku, učitavam ponovo…", Toast.LENGTH_SHORT).show();
+            web.reload();
+        } else if (fixes == 2) {
+            fixes++;
+            Toast.makeText(this, login
+                ? "Prijava u MYJYSK nije uspjela. Provjeri lozinku u Postavke → Prijava."
+                : "MYJYSK trenutno vraća grešku (na njihovoj strani). Pokušaj kasnije ili tapni Osvježi.", Toast.LENGTH_LONG).show();
+        }
     }
 
     /** Saves an attachment to Downloads (in the background) and opens it with the phone's app for that kind of file. */

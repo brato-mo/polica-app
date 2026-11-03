@@ -1,5 +1,6 @@
-// Runs inside the store system's own page (StoreFront), driven by MinusApply, after the employee typed their own
-// SAP HR number and password in the app and confirmed the list of corrections. It does what StoreFront's own
+// Runs inside the store system's own page (StoreFront), driven by MinusApply, after the employee confirmed the list
+// of corrections in the app (password from the app's settings or typed for this one sending; the SAP HR number is
+// the one StoreFront is signed in with unless one was typed). It does what StoreFront's own
 // Minus lista and Regulacija zalihe pages do on "approve": checks the user, then sends the corrections.
 // Before sending it reads the minus list again and sends only the lines that still stand exactly as the employee
 // saw them (nothing is corrected twice). Result in window.__mx; the credentials are dropped from the page at once.
@@ -27,7 +28,11 @@
   function done(o) { user = pass = ''; window.__mx = o; }
   var store = '', catalog = '';
   req('GET', '/api/v1/websapapi/user-details').then(json).then(function (u) {
-    var si = u && u.userDetails && u.userDetails.storeInfo;
+    var ud = u && u.userDetails;
+    var si = ud && ud.storeInfo;
+    // no number typed: the SAP HR number is the user StoreFront is signed in with (the same as the employee number)
+    if (!user) user = s(ud && (ud.username || ud.employeeNumber), 12);
+    if (!/^\d{3,12}$/.test(user)) throw 'nouser';
     store = si && s(si.storeId, 10);
     catalog = si && s(si.catalogId, 30);
     if (!/^[0-9A-Za-z]{1,10}$/.test(store || '') || !/^[0-9A-Za-z-]{1,30}$/.test(catalog || '')) throw 'store';

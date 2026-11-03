@@ -8,7 +8,18 @@ T=/home/claude/tools/bin
 AJAR="$T/android.jar"
 VERSION_CODE="${VERSION_CODE:-1}"
 VERSION_NAME="${VERSION_NAME:-1.0}"
-KS_PASS="$(cat keystore/password.txt)"
+# TEST=1: a test build that installs NEXT TO the real app (package ba.polica.test, name "... TEST", its own data,
+# signed with keystore/test.jks, made here if missing), so trying it never touches the real app or its data
+TEST="${TEST:-0}"
+if [ "$TEST" = 1 ]; then
+  if [ ! -f keystore/test.jks ]; then
+    mkdir -p keystore && keytool -genkeypair -keystore keystore/test.jks -alias polica -storepass testtest -keypass testtest \
+      -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Test" >/dev/null 2>&1
+  fi
+  KS=keystore/test.jks; KS_PASS=testtest
+else
+  KS=keystore/release.jks; KS_PASS="$(cat keystore/password.txt)"
+fi
 
 rm -rf build && mkdir -p build/gen build/classes build/dex out
 
@@ -29,6 +40,7 @@ case "$MJHOST$MJME$PLHOST" in *[\<\>\&\'\"\`\$\\]*) echo "MYJYSK files must not 
 # the name the app shows (launcher, title, texts): private file keystore/appname.txt; without it the neutral name
 APPNAME="Polica"
 if [ -s keystore/appname.txt ]; then APPNAME="$(tr -d '\r\n' < keystore/appname.txt)"; fi
+if [ "$TEST" = 1 ]; then APPNAME="$APPNAME TEST"; fi
 case "$APPNAME" in *[\<\>\&\'\"\`\$\\]*) echo "app name must not contain < > & ' \" \` $ \\"; exit 1;; esac
 mkdir -p build/res-gen/values
 cat > build/res-gen/values/config.xml <<XML
@@ -63,7 +75,7 @@ PY
 "$T/aapt2" link -o build/app-unsigned.apk -I "$AJAR" --manifest AndroidManifest.xml -A build/assets-gen \
   --min-sdk-version 26 --target-sdk-version 34 \
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
-  -0 woff -0 wasm -0 pdf \
+  -0 woff -0 wasm -0 pdf $( [ "$TEST" = 1 ] && echo "--rename-manifest-package ba.polica.test" ) \
   --java build/gen build/res.zip build/res-gen.zip
 
 echo "2/5 java"
@@ -73,8 +85,13 @@ test -f build/classes/ba/polica/MainActivity.class
 test -f build/classes/ba/polica/ScanActivity.class
 
 echo "3/5 dex"
-java -cp "$T/dx-30.0.2.jar" com.android.dx.command.Main --dex --min-sdk-version=26 \
-  --output=build/dex/classes.dex build/classes 2>&1 | grep -v JAVA_TOOL_OPTIONS || true
+if [ -f "$T/dx-30.0.2.jar" ]; then
+  java -cp "$T/dx-30.0.2.jar" com.android.dx.command.Main --dex --min-sdk-version=26 \
+    --output=build/dex/classes.dex build/classes 2>&1 | grep -v JAVA_TOOL_OPTIONS || true
+else
+  java -cp "$T/d8.jar" com.android.tools.r8.D8 --min-api 26 --lib "$AJAR" --output build/dex \
+    $(find build/classes -name '*.class') 2>&1 | grep -v JAVA_TOOL_OPTIONS || true
+fi
 test -f build/dex/classes.dex
 
 echo "4/5 package"
@@ -82,7 +99,7 @@ echo "4/5 package"
 
 echo "5/5 align + sign"
 java -jar "$T/uber-apk-signer.jar" -a build/app-unsigned.apk -o build/signed \
-  --ks keystore/release.jks --ksAlias polica --ksPass "$KS_PASS" --ksKeyPass "$KS_PASS" 2>&1 \
+  --ks "$KS" --ksAlias polica --ksPass "$KS_PASS" --ksKeyPass "$KS_PASS" 2>&1 \
   | grep -v JAVA_TOOL_OPTIONS | grep -E -i "error|fail|signed|verify" | head -20 || true
 cp build/signed/*-aligned-signed.apk "out/Polica-$VERSION_NAME.apk"
 ls -la out

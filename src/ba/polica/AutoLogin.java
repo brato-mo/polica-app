@@ -25,6 +25,10 @@ final class AutoLogin {
     // means a refused password. One sign-in goes through two forms in a row (StoreFront's gateway, then the company's
     // sign-in page), and two WebViews may reach a sign-in page at the same moment.
     private static final java.util.Map<WebView, java.util.Map<String, Long>> TRIED = new java.util.WeakHashMap<>();
+    // how many times in a row the form came back without a word about a wrong password (per WebView and host): the
+    // sign-in host sometimes shows its form again after a good try ("session could not be established"); one more try
+    // is made then, never more
+    private static final java.util.Map<WebView, java.util.Map<String, Integer>> BACK = new java.util.WeakHashMap<>();
     private static final int VERSION = 2; // a "refused" kept by an older version may be wrong: forgotten once
 
     private AutoLogin() {
@@ -154,7 +158,8 @@ final class AutoLogin {
                     + "var b=f&&f.querySelector('input[type=password]');"
                     + "if(!a||!b){var l=[].slice.call(document.querySelectorAll('a[href]')).filter(function(x){return x.host===location.host&&/new session|start|continue|nastav|nov/i.test(x.textContent)})[0];"
                     + "if(l&&!recent&&!strict){l.click();return 'link'}return 'none'}"
-                    + "if(recent)return 'again';"
+                    + "if(recent){var t=(document.body&&document.body.innerText||'').toLowerCase();"
+                    + "return /not correct|incorrect|invalid|wrong|denied|neispravn|pogre[sš]n|nije ta[cč]n|locked|zaklju/.test(t)?'again-bad':'again'}"
                     + "function put(e,v){var s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;s.call(e,v);"
                     + "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}"
                     + "put(a,u);put(b,p);var s=f.querySelector('[type=submit],button');if(s)s.click();else f.submit();return 'sent'}catch(e){return 'error'}})("
@@ -170,6 +175,18 @@ final class AutoLogin {
                                 if (m == null) TRIED.put(w, m = new java.util.HashMap<>());
                                 m.put(host, System.currentTimeMillis());
                             } else if (v.contains("again")) {
+                                java.util.Map<String, Integer> b = BACK.get(w);
+                                if (b == null) BACK.put(w, b = new java.util.HashMap<>());
+                                Integer n = b.get(host);
+                                if (!v.contains("again-bad") && (n == null || n < 1)) {
+                                    // no word about a wrong password: the page only came back; one more try
+                                    b.put(host, 1);
+                                    java.util.Map<String, Long> m = TRIED.get(w);
+                                    if (m != null) m.remove(host);
+                                    note(p, "retry", host);
+                                    ui.postDelayed(again, 1200);
+                                    return;
+                                }
                                 p.edit().putBoolean("refused", true).apply();
                                 note(p, "refused", host);
                             } else if (v.contains("none") && ++tries[0] < 5) {
