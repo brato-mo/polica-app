@@ -12,12 +12,12 @@ const FORM = (err) => `<html><body>${err ? '<div class="err">The username or pas
 <label>Password</label><input type="password" name="password" id="input_2"><input type="submit" value="Logon"></form></body></html>`;
 const b = await chromium.launch();
 const p = await b.newPage();
-const run = (recent, strict) => p.evaluate(`${src}"294641","tajna",${recent},${strict})`);
+const run = (recent, strict) => p.evaluate(`${src}"100200","tajna",${recent},${strict})`);
 let bad = 0;
 const expect = (name, got, want) => { const ok = got === want; if (!ok) bad++; console.log(ok ? 'ok  ' : 'FAIL', name, got); };
 await p.setContent(FORM(false));
 expect('fills and sends', await run(false, false), 'sent');
-expect('user filled', await p.inputValue('#input_1'), '294641');
+expect('user filled', await p.inputValue('#input_1'), '100200');
 expect('submitted', await p.evaluate('window.sent'), 1);
 await p.setContent(FORM(false));
 expect('form back without error: retry', await run(true, false), 'again');

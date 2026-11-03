@@ -17,7 +17,7 @@ test('a failed read keeps nothing away: merge only runs on good data, old lists 
 
 test('my tasks: staff role and my own, not done ones', () => {
   const st = { my: [], loc: [{ id: '1', role: 'Store Staff', title: 'a' }, { id: '2', role: 'Store Manager', title: 'b' }, { id: '3', role: 'Store Staff', done: true, title: 'c' }] };
-  assert.deepEqual(news.myTasks(st, 'Jasmin Omerika, 294641').map((t) => t.id), ['1']);
+  assert.deepEqual(news.myTasks(st, 'Test Prodavac, 100200').map((t) => t.id), ['1']);
 });
 
 test('lastMorning is the last 8:00', () => {

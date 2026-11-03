@@ -7,7 +7,7 @@ import vm from 'node:vm';
 
 const SRC = fs.readFileSync(new URL('../assets/minus-apply.js', import.meta.url), 'utf8');
 
-function fakeStore({ minus = { '1234567': -2 }, stock = 5, passOk = 'good', user = '294641' } = {}) {
+function fakeStore({ minus = { '1234567': -2 }, stock = 5, passOk = 'good', user = '100200' } = {}) {
   const calls = [];
   const res = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body, headers: { get: () => 'application/json' } });
   const fetch = async (u, o = {}) => {
@@ -41,7 +41,7 @@ test('no HR number typed: the StoreFront user is used and both steps are sent on
   assert.equal(r.state, 'ok');
   assert.deepEqual(r.sent, ['1234567']);
   const v = st.calls.find((c) => c.u === '/api/v1/validate-sap-user');
-  assert.equal(v.body.username, '294641');
+  assert.equal(v.body.username, '100200');
   assert.equal(sends(st.calls).length, 2);
   assert.deepEqual(sends(st.calls).map((c) => c.body.module), ['MINUS_LIST', 'STOCK_ADJUSTMENT']);
 });
@@ -73,7 +73,7 @@ test('StoreFront gives no usable user number: nothing sent', async () => {
 
 test('only Regulacija: one sending, MINUS_LIST untouched', async () => {
   const st = fakeStore({ minus: {} });
-  const r = await run({ user: '294641', pass: 'good', items: [item], mode: 'adjust' }, st);
+  const r = await run({ user: '100200', pass: 'good', items: [item], mode: 'adjust' }, st);
   assert.equal(r.state, 'ok');
   assert.deepEqual(sends(st.calls).map((c) => c.body.module), ['STOCK_ADJUSTMENT']);
 });

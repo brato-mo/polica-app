@@ -6,7 +6,7 @@ export const STAFF_ROLES = ['store staff', 'store staff - part timers', 'sve ulo
 
 export const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').trim();
 
-/** "Jasmin Omerika, 294641" -> [['jasmin','omerika'], ['294641']]: each entry matches when all its words are there. */
+/** "Test Prodavac, 100200" -> [['test','prodavac'], ['100200']]: each entry matches when all its words are there. */
 export function meTokens(me) {
   return String(me || '').split(/[,;]/).map((p) => fold(p).split(/\s+/).filter((w) => w.length >= 2)).filter((ws) => ws.length);
 }

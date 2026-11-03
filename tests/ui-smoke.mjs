@@ -35,7 +35,7 @@ await page.addInitScript((files) => {
   window.__copied = [];
   window.Android = new Proxy({
     readText: (n) => F[n] || '', writeText: (n, s) => { F[n] = s; return true; }, deleteText: (n) => { delete F[n]; },
-    copyText: (t) => window.__copied.push(t), myjyskOn: () => true, myjyskMe: () => 'Jasmin Omerika, 294641',
+    copyText: (t) => window.__copied.push(t), myjyskOn: () => true, myjyskMe: () => 'Test Prodavac, 100200',
     myjysk: () => setTimeout(() => window.onMyjysk({ how: 'error' }), 50), loginState: () => 'ok', loginLast: () => '',
     version: () => '1.40-test', device: () => 'test', isDark: () => false,
   }, { get: (t, k) => (k in t ? t[k] : () => '') });
