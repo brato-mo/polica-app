@@ -1,7 +1,7 @@
 {
- "code": 42,
- "name": "1.41",
- "notes": "Prijava odmah pri pokretanju aplikacije, bez ulaska u Postavke",
+ "code": 43,
+ "name": "1.42",
+ "notes": "Prvi ekran za prijavu u svijetlom izgledu; provjera apdejta kaže pravi razlog kad ne uspije",
  "size": 1954316,
- "sha256": "3076cadd9304ec6dbc2a6505a59e349435f17c2bed51adb1696d34780adf69ee"
+ "sha256": "87298904330e84d2d534636b50e5c52280c5555658a83093b9289ab9f3be034d"
 }
