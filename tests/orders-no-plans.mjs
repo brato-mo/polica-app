@@ -20,7 +20,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.addInitScript((files) => {
   const F = { ...files };
-  window.Android = new Proxy({ readText: (n) => F[n] || '', writeText: (n, s) => { F[n] = s; return true; }, deleteText: () => {}, myjysk: () => {}, loginState: () => 'none', loginLast: () => '', version: () => 'x', device: () => 'x', isDark: () => false }, { get: (t, k) => (k in t ? t[k] : () => '') });
+  window.Android = new Proxy({ readText: (n) => F[n] || '', writeText: (n, s) => { F[n] = s; return true; }, deleteText: () => {}, myjysk: () => {}, loginState: () => 'ok', loginLast: () => '', version: () => 'x', device: () => 'x', isDark: () => false }, { get: (t, k) => (k in t ? t[k] : () => '') });
 }, files);
 await page.goto(`http://localhost:${srv.address().port}/index.html`);
 await page.click('[data-mode="orders"]');
