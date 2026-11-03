@@ -30,6 +30,7 @@
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5V9h-4.5"/></symbol>
   <symbol id="i-fit" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M16 10v4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
 </svg>
 
 <!-- Home: search, recent finds, scan -->
@@ -71,6 +72,10 @@
     <div id="results" hidden></div>
 
     <div id="recentWrap">
+      <div id="favWrap" hidden>
+        <div class="sec-head"><h2>Favoriti</h2></div>
+        <div id="favs"></div>
+      </div>
       <div class="sec-head" id="recentHead">
         <h2>Zadnje traženo</h2>
         <button class="text-btn" id="clearRecent" type="button">Očisti</button>

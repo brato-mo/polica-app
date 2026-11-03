@@ -569,7 +569,10 @@ public class MainActivity extends Activity {
                 public void onClick(android.content.DialogInterface di, int w) {
                     String u = user.getText().toString().trim(), p = pass.getText().toString();
                     boolean ok = !u.isEmpty() && !p.isEmpty() && Secret.save(MainActivity.this, u, p);
-                    if (ok) AutoLogin.reset(MainActivity.this); // a new password: signing in by itself may try again
+                    if (ok) {
+                        AutoLogin.reset(MainActivity.this); // a new password: signing in by itself may try again
+                        getSharedPreferences("sap", MODE_PRIVATE).edit().remove(SAP_KEPT_BAD).apply();
+                    }
                     runJs("window.onPlansLogin&&onPlansLogin(" + ok + ")");
                 }
             })
@@ -620,8 +623,24 @@ public class MainActivity extends Activity {
 
     private boolean applying;
 
+    /** The kept sign-in did not pass StoreFront's check of the approver: ask for the password by hand until it is saved again. */
+    private static final String SAP_KEPT_BAD = "keptBad";
+
     private void showMinusApply(final JSONArray items, final boolean adjustOnly) {
+        showMinusApply(items, adjustOnly, false);
+    }
+
+    /**
+     * Shows what will be sent and asks the employee to confirm. With a user name and password kept in the settings
+     * (the same company sign-in) nothing has to be typed: the SAP HR number is the user StoreFront is signed in with,
+     * the password is the kept one. "Upiši ručno" (or a kept password StoreFront did not accept) asks for both.
+     * Nothing is sent before the button is pressed.
+     */
+    private void showMinusApply(final JSONArray items, final boolean adjustOnly, boolean byHand) {
         if (applying) return;
+        final android.content.SharedPreferences hp = getSharedPreferences("sap", MODE_PRIVATE);
+        final String[] kept = Secret.load(this);
+        final boolean useKept = !byHand && kept != null && !hp.getBoolean(SAP_KEPT_BAD, false);
         float d = getResources().getDisplayMetrics().density;
         android.widget.LinearLayout box = new android.widget.LinearLayout(this);
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -648,45 +667,89 @@ public class MainActivity extends Activity {
         note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
         android.widget.ScrollView sc = new android.widget.ScrollView(this);
         sc.addView(note);
-        box.addView(sc, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, (int) (220 * d)));
+        box.addView(sc, new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, (int) ((useKept ? 260 : 220) * d)));
         final android.widget.EditText user = new android.widget.EditText(this);
-        user.setHint("SAP HR broj");
-        user.setSingleLine(true);
-        user.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        final android.content.SharedPreferences hp = getSharedPreferences("sap", MODE_PRIVATE);
-        user.setText(hp.getString("hr", ""));
-        box.addView(user);
         final android.widget.EditText pass = new android.widget.EditText(this);
-        pass.setHint("Lozinka");
-        pass.setSingleLine(true);
-        pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        box.addView(pass);
-        new android.app.AlertDialog.Builder(this)
+        if (useKept) {
+            android.widget.TextView who = new android.widget.TextView(this);
+            String hr = keptHr(hp, kept);
+            who.setText("Potvrđuješ s prijavom iz postavki" + (hr.isEmpty() ? "" : " (SAP HR " + hr + ")") + ". Ništa ne treba kucati.");
+            who.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            who.setPadding(0, (int) (10 * d), 0, 0);
+            box.addView(who);
+        } else {
+            user.setHint("SAP HR broj");
+            user.setSingleLine(true);
+            user.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            user.setText(keptHr(hp, kept));
+            box.addView(user);
+            pass.setHint("Lozinka");
+            pass.setSingleLine(true);
+            pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            box.addView(pass);
+        }
+        android.app.AlertDialog.Builder db = new android.app.AlertDialog.Builder(this)
             .setTitle((adjustOnly ? "Potvrdi regulaciju (" : "Potvrdi zamjene (") + items.length() + ")")
             .setView(box)
             .setPositiveButton("Potvrdi i pošalji", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface di, int w) {
-                    String u = user.getText().toString().trim(), p = pass.getText().toString();
-                    pass.setText("");
-                    if (u.isEmpty() || p.isEmpty()) {
-                        runJs("window.onMinusApplied&&onMinusApplied({state:'error',why:'empty'})");
-                        return;
+                    if (applying) return; // one sending at a time: a second tap sends nothing
+                    String u, p;
+                    if (useKept) {
+                        String[] now = Secret.load(MainActivity.this);
+                        if (now == null) {
+                            runJs("window.onMinusApplied&&onMinusApplied({state:'error',why:'empty'})");
+                            return;
+                        }
+                        u = keptHr(hp, now); // empty: the page takes the user StoreFront is signed in with
+                        p = now[1];
+                    } else {
+                        u = user.getText().toString().trim();
+                        p = pass.getText().toString();
+                        pass.setText("");
+                        if (u.isEmpty() || p.isEmpty()) {
+                            runJs("window.onMinusApplied&&onMinusApplied({state:'error',why:'empty'})");
+                            return;
+                        }
+                        hp.edit().putString("hr", u).apply(); // the number only, never the password
                     }
-                    hp.edit().putString("hr", u).apply(); // the number only, never the password
                     applying = true;
                     runJs("window.onMinusApplying&&onMinusApplying()");
                     MinusApply.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), u, p, items, adjustOnly, new MinusApply.Callback() {
                         @Override
                         public void done(JSONObject result) {
                             applying = false;
+                            try {
+                                if (useKept) result.put("kept", true);
+                                // the kept password was refused as approver: next time it is typed by hand (no second
+                                // automatic try with the same password)
+                                if (useKept && "auth".equals(result.optString("why"))) hp.edit().putBoolean(SAP_KEPT_BAD, true).apply();
+                                else if ("ok".equals(result.optString("state"))) hp.edit().remove(SAP_KEPT_BAD).apply();
+                            } catch (Exception ignored) {
+                            }
                             runJs("window.onMinusApplied&&onMinusApplied(" + result + ")");
                         }
                     });
                 }
             })
-            .setNegativeButton("Odustani", null)
-            .show();
+            .setNegativeButton("Odustani", null);
+        if (useKept) {
+            db.setNeutralButton("Upiši ručno", new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface di, int w) {
+                    showMinusApply(items, adjustOnly, true);
+                }
+            });
+        }
+        db.show();
+    }
+
+    /** The SAP HR number to use: the one typed last time, else the kept user name when it is a number, else "". */
+    private static String keptHr(android.content.SharedPreferences hp, String[] kept) {
+        String hr = hp.getString("hr", "");
+        if (!hr.isEmpty()) return hr;
+        return kept != null && kept[0].trim().matches("\\d{3,12}") ? kept[0].trim() : "";
     }
 
     private static final int REQ_NOTIF = 9;
@@ -707,8 +770,8 @@ public class MainActivity extends Activity {
         }
 
         /**
-         * The employee confirms the minus-list corrections in the app: a native dialog shows what will be sent and asks
-         * for their own SAP HR number and password (typed by them, used once, never kept). Answer: window.onMinusApplied.
+         * The employee confirms the minus-list corrections in the app: a native dialog shows what will be sent; the
+         * sign-in kept in the settings is used (or typed by hand). Answer: window.onMinusApplied.
          */
         @JavascriptInterface
         public void minusApply(final String itemsJson) {

@@ -47,6 +47,7 @@ public class MyjyskActivity extends Activity {
     private String mode;
     private String target;
     private boolean finished;
+    private int reloads; // full reloads after MYJYSK said "sign in" or failed: at most two, then the employee decides
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
@@ -161,6 +162,7 @@ public class MyjyskActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login
+                if (reader != null) reader.reset(); // a new page: read it from scratch (once, not on every look)
             }
 
             @Override
@@ -207,10 +209,20 @@ public class MyjyskActivity extends Activity {
                     finishWith("ok", data);
                 } else if ("busy".equals(state)) {
                     note.setText("Učitavam zadatke i vijesti…");
-                } else if ("login".equals(state)) {
-                    // MYJYSK page is open but the data is not given yet: let the employee sign in, then read again
-                    note.setText("Prijavi se u MYJYSK. Kad uđeš, zadaci i vijesti se učitaju i ovaj ekran se sam zatvori.");
-                    reader.reset();
+                } else if ("login".equals(state) || "error".equals(state)) {
+                    // MYJYSK's own calls were refused (the session ran out) or failed. A full reload of the start page
+                    // lets the company sign-in run (with the kept login); the read starts again when the page is there.
+                    // Not reloaded again and again: after two reloads the employee signs in or closes the screen.
+                    if (reloads < 2) {
+                        reloads++;
+                        note.setText("login".equals(state) ? "Sesija je istekla. Ponovo se prijavljujem…" : "MYJYSK je vratio grešku. Pokušavam ponovo…");
+                        reader.reset();
+                        web.loadUrl(target);
+                    } else {
+                        note.setText("login".equals(state)
+                            ? "Prijavi se u MYJYSK. Kad uđeš, zadaci i vijesti se učitaju i ovaj ekran se sam zatvori."
+                            : "MYJYSK trenutno vraća grešku (to je na njihovoj strani). Zatvori i pokušaj kasnije; ranije učitane vijesti ostaju.");
+                    }
                 }
             }
         });

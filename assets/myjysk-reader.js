@@ -32,6 +32,18 @@
       path: /^\/ui\/news\/articles\/\d+$/.test(a.url || '') ? a.url : '',
     };
   }
+  // runs fn over the list with at most n calls at a time (MYJYSK is not hit with two dozen calls at once)
+  function pool(list, n, fn) {
+    var out = new Array(list.length), next = 0;
+    function lane() {
+      if (next >= list.length) return Promise.resolve();
+      var i = next++;
+      return Promise.resolve(fn(list[i])).then(function (v) { out[i] = v; return lane(); });
+    }
+    var lanes = [];
+    for (var k = 0; k < Math.min(n, list.length); k++) lanes.push(lane());
+    return Promise.all(lanes).then(function () { return out; });
+  }
   var news = function (ids, sort, n) { return post('/searchapi/kb/recent', { types: ['news'], limit: n, start: 0, kbasesIds: ids, sorting: sort, featureOnWidget: false }); };
   function text(html) {
     var d = new DOMParser().parseFromString(html || '', 'text/html');
@@ -48,7 +60,7 @@
         return { id: id, title: s(a.title, 160), dept: s(a.articleTopicName, 60), upd: s(a.dateUpdated || a.lastPublishedDate, 19), path: topic && /^\d+$/.test(id) ? '/ui/knowledge-bases/' + kb + '/topics/' + topic + '/articles/' + id : '' };
       });
       var want = list.filter(function (a) { return /^\s*[23]\)/.test(a.title); });
-      return Promise.all(want.map(function (a) {
+      return pool(want, 6, function (a) {
         return get('/learnapi/v1/articles/' + encodeURIComponent(a.id) + '/view').then(function (j) {
           var secs = (j.sections || []).filter(function (x) { return x.isActive !== false; }).sort(function (x, y) { return x.order - y.order; });
           var links = [];
@@ -64,7 +76,7 @@
           });
           return { a: a, upd: s(j.lastUpdated, 19) || a.upd, first: secs.length ? s(text(secs[0].content), 6000) : '', links: links };
         }).catch(function (e) { if (e === 'login') throw e; return { a: a, upd: a.upd, first: '', links: [] }; });
-      })).then(function (read) {
+      }).then(function (read) {
         var plans = [], upds = [];
         read.forEach(function (x) {
           x.links.forEach(function (l) { l.dept = x.a.dept; l.art = x.a.id; l.upd = x.upd; plans.push(l); });

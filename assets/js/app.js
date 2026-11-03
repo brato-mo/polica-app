@@ -157,6 +157,21 @@ function thumb(num, cls = '') {
   return `<span class="thumb ${cls}">${src ? `<img src="${src}" alt="" loading="lazy" decoding="async">` : icon('box')}</span>`;
 }
 
+const isFav = (num) => (S.user.favs || []).includes(num);
+function toggleFav(num) {
+  const f = S.user.favs || [];
+  S.user.favs = f.includes(num) ? f.filter((n) => n !== num) : [num, ...f].slice(0, 40);
+  saveUser();
+  toast(isFav(num) ? 'Dodano u favorite' : 'Uklonjeno iz favorita');
+}
+
+/** One tap on a code: it goes to the phone's clipboard. */
+function copyCode(num) {
+  try { A.copyText(num); toast(`Šifra ${num} kopirana`); } catch (e) {
+    try { navigator.clipboard.writeText(num); toast(`Šifra ${num} kopirana`); } catch (e2) { toast('Kopiranje ne radi u ovoj verziji.'); }
+  }
+}
+
 function rememberRecent(num) {
   S.user.recent = [{ num, t: Date.now() }, ...S.user.recent.filter((r) => r.num !== num)].slice(0, 15);
   saveUser();
@@ -178,6 +193,9 @@ function top() { return S.stack[S.stack.length - 1]; }
 
 function go(id, state = null, { replace = false } = {}) {
   const t = top();
+  // the list stays where it was: coming back, the screen below opens at the same place
+  const below = $(`#${t.id} .scroll`);
+  if (below) t.scroll = below.scrollTop;
   if (replace && t.id !== 'home') S.stack[S.stack.length - 1] = { id, state };
   else S.stack.push({ id, state });
   show(id, replace ? 'enter-back' : 'enter');
@@ -199,6 +217,8 @@ function back() {
   if (t.id === 'minus') renderMinus();
   if (t.id === 'plans') renderPlans();
   if (t.id === 'home') renderHome();
+  const sc = $(`#${t.id} .scroll`);
+  if (sc && t.scroll) { const y = t.scroll; sc.scrollTop = y; requestAnimationFrame(() => { sc.scrollTop = y; }); }
   return true;
 }
 
@@ -405,6 +425,7 @@ function clrFiltered() {
   }
   const val = (x) => (x.price || 0) * x.stock;
   const by = S.clr.sort;
+  if (by === 'num') return list.sort((a, b) => a.num.localeCompare(b.num));
   list.sort((a, b) => (by === 'value' ? val(b) - val(a) : by === 'new' ? core.dateKey(b.chg) - core.dateKey(a.chg) : b.stock - a.stock) || a.name.localeCompare(b.name, 'bs'));
   return list;
 }
@@ -484,7 +505,7 @@ function renderClearance() {
   const n = (s) => v.list.filter((x) => x.st === s).length;
   if (S.clr.st !== 'all' && !c.st.includes(S.clr.st)) S.clr.st = 'all';
   const sts = [['all', `Svi (${v.list.length})`], ...c.st.map((k) => [k, `${k} (${n(k)})`])];
-  const sorts = [['stock', 'Zaliha'], ['value', 'Vrijednost'], ['new', 'Novi status']];
+  const sorts = [['stock', 'Količina'], ['value', 'Vrijednost'], ['num', 'Šifra'], ['new', 'Novi status']];
   body.innerHTML = `<div class="clr-sum" id="clrSum"></div>
     <div class="clr-tools">
       <div class="seg seg-sm" role="radiogroup" aria-label="Status">${sts.map(([v, t]) => `<button class="seg-btn" type="button" role="radio" aria-checked="${S.clr.st === v}" data-clr-st="${v}">${t}</button>`).join('')}</div>
@@ -587,13 +608,13 @@ function renderSettings() {
   ${(() => {
     let st = 'none';
     try { st = A.loginState ? A.loginState() : (A.plansLoginKept && A.plansLoginKept() ? 'ok' : 'none'); } catch (e) { /* older shell */ }
-    const line = st === 'ok' ? 'Uključena. Kad te MYJYSK ili StoreFront odjavi, @APP@ se sama ponovo prijavi.'
+    const line = st === 'ok' ? 'Uključena. Kad te MYJYSK ili StoreFront odjavi, @APP@ se sama ponovo prijavi. Ista lozinka se koristi i za potvrdu Minus liste, pa ništa ne kucaš.'
       : st === 'refused' ? 'Lozinka nije prihvaćena (možda je promijenjena). Upiši novu, do tada se aplikacija ne prijavljuje sama.'
       : 'Isključena. Upiši korisničko ime i lozinku i aplikacija se sama prijavljuje kad te sistem odjavi.';
     let last = '';
     try {
       const [at, what, host] = String((A.loginLast && A.loginLast()) || '').split('|');
-      const W = { sent: 'poslano korisničko ime i lozinka', refused: 'stranica je odbila lozinku', stopped: 'nije pokušano (lozinka ranije odbijena)', nologin: 'nije pokušano (nema sačuvane lozinke)', noform: 'stranica za prijavu otvorena, ali forma nije pronađena', link: 'otvorena nova sesija', error: 'greška pri popunjavanju' };
+      const W = { sent: 'poslano korisničko ime i lozinka', refused: 'stranica je odbila lozinku', stopped: 'nije pokušano (lozinka ranije odbijena)', nologin: 'nije pokušano (nema sačuvane lozinke)', noform: 'stranica za prijavu otvorena, ali forma nije pronađena', link: 'otvorena nova sesija', retry: 'forma se vratila bez greške, pokušano još jednom', error: 'greška pri popunjavanju' };
       if (+at && W[what]) {
         const d = new Date(+at);
         last = `Zadnji pokušaj: ${d.getDate()}.${d.getMonth() + 1}. u ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · ${W[what]}${host ? ` (${esc(host)})` : ''}`;
@@ -728,6 +749,20 @@ function orderCard(ord, hit) {
   </article>`;
 }
 
+/** Compact: one line per order, the matching lines only; more orders on the screen at once. */
+function orderRowCompact(ord, hit) {
+  const items = ord.items || [];
+  const shown = hit ? items.filter((it) => hit(it)) : items;
+  const lines = (shown.length ? shown : items).slice(0, 3).map((it) => `<span class="oc-line"><span class="code">${esc(it.num)}</span> ${it.qty > 0 ? `${it.qty} kom ` : ''}${stBadge(it.st)}</span>`).join('');
+  const more = items.length - Math.min(3, (shown.length ? shown : items).length);
+  return `<button class="ocard ocard-c" type="button" data-oq="${esc(ord.no)}">
+    <span class="ocard-top"><b>${esc(custName(ord))}</b><span class="ord-chip">${esc(ord.status || ord.tab)}</span></span>
+    <span class="oc-lines">${lines}${more > 0 ? `<span class="oc-more">+${more}</span>` : ''}</span>
+  </button>`;
+}
+
+const ordViewSwitch = () => `<div class="seg-mini" role="group" aria-label="Prikaz narudžbi"><button type="button" data-ovw="cards" aria-pressed="${!cfg().ordCompact}">Detaljno</button><button type="button" data-ovw="compact" aria-pressed="${!!cfg().ordCompact}">Kompaktno</button></div>`;
+
 function runOrdersSearch() {
   const q = $('#q').value.trim();
   $('#clearQ').hidden = !q;
@@ -780,7 +815,11 @@ function runOrdersSearch() {
     const nm = (found[0].items || []).find((it) => it.num === exact);
     head = `Artikal ${exact}${nm && nm.name ? ` · ${esc(nm.name)}` : ''}<br>${head}${qty ? `, ukupno ${qty} kom` : ''}`;
   }
-  box.innerHTML = `<p class="count-line">${head}${found.length > 40 ? ' (prikazano prvih 40)' : ''} · stanje ${esc(ageText(o.at))}</p>${found.slice(0, 40).map((ord) => orderCard(ord, hit)).join('')}`;
+  // a search for one order number shows that order in full, whatever the view
+  const compact = cfg().ordCompact && !(found.length === 1 && found[0].no.includes(d) && digits);
+  const max = compact ? 150 : 40;
+  box.innerHTML = `<div class="ord-head"><p class="count-line">${head}${found.length > max ? ` (prikazano prvih ${max})` : ''} · stanje ${esc(ageText(o.at))}</p>${ordViewSwitch()}</div>`
+    + found.slice(0, max).map((ord) => (compact ? orderRowCompact(ord, hit) : orderCard(ord, hit))).join('');
 }
 
 function setMode(m) {
@@ -821,7 +860,8 @@ function siteDiff() {
 
 function renderOrdersBar() {
   const b = $('#ordersBar');
-  const has = S.plans.length > 0;
+  // customer orders come from StoreFront: they work without any planogram on the phone
+  const has = S.plans.length > 0 || S.mode === 'orders';
   b.hidden = !has;
   if (!has) return;
   const o = S.user.orders;
@@ -909,6 +949,8 @@ function freshenMyjysk() {
 function refreshMyjysk(visible) {
   if (!mjOn()) return;
   if (S.mj.busy && !visible) return;
+  if (!navigator.onLine) { S.mj.err = 'offline'; if (S.mode === 'news') renderNews(); return; } // kept data stays shown
+  S.mj.err = '';
   S.mj.busy = !visible;
   try { A.myjysk(!!visible); } catch (e) { S.mj.busy = false; toast('Ova verzija aplikacije ne zna čitati MYJYSK.'); }
   if (S.mode === 'news') renderNews();
@@ -918,6 +960,7 @@ window.onMyjysk = (r) => {
   S.mj.busy = false;
   const after = S.mj.after;
   if (after === 'plans' && r && r.how !== 'login') S.mj.after = null;
+  S.mj.err = r && r.how === 'error' ? (navigator.onLine ? 'error' : 'offline') : r && r.how === 'login' ? 'login' : '';
   if (r && r.how === 'ok') {
     takeMyjysk(r);
     store.write(MJ_FILE, { how: 'ok', at: +r.at || Date.now(), data: r.data });
@@ -926,7 +969,7 @@ window.onMyjysk = (r) => {
     S.user.mj.login = true;
     saveUser();
   } else if (r && r.how === 'error') {
-    toast('MYJYSK nije odgovorio. Pokušaj malo kasnije.');
+    toast(navigator.onLine ? 'MYJYSK nije odgovorio (greška na njihovoj strani). Ranije učitano ostaje.' : 'Nema internet veze. Ranije učitano ostaje.');
   }
   renderHome();
   if ($('#settings').classList.contains('is-active')) renderSettings();
@@ -1122,7 +1165,7 @@ function minusPlan(list) {
     ${pend}
     <p class="att-from">Prije potvrde provjeri na polici da je pod zamjenskom šifrom stvarno ostalo koliko piše „poslije ostaje“.</p>
     <button class="btn btn-primary btn-block mp-apply" type="button" data-mp-apply ${busy}>${S.minusApplying ? 'Šaljem u StoreFront…' : `Potvrdi ${one.length} ${plural(one.length, 'zamjenu', 'zamjene', 'zamjena')} u aplikaciji`}</button>
-    <p class="att-from">Potvrda šalje oba koraka odjednom, s komentarima, pod tvojim SAP HR brojem i lozinkom (ukucaš ih ti, ne pamte se). Ili ručno u StoreFrontu: prvo svi na Minus listi pa jedna potvrda, zatim svi na Regulaciji zalihe pa jedna potvrda.</p>
+    <p class="att-from">Potvrda šalje oba koraka odjednom, s komentarima, pod tvojim SAP HR brojem, s lozinkom iz postavki (Postavke → Prijava), pa ništa ne kucaš; „Upiši ručno“ ako želiš drugu. Ili ručno u StoreFrontu: prvo svi na Minus listi pa jedna potvrda, zatim svi na Regulaciji zalihe pa jedna potvrda.</p>
     <div class="mp-step"><div class="mp-head"><b>1. Minus lista</b><small>${left(1)} preostalo</small><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button></div>
       ${one.map((x) => row(x, 1)).join('')}</div>
     <div class="mp-step"><div class="mp-head"><b>2. Regulacija zalihe</b><small>${left(2)} preostalo</small><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
@@ -1144,7 +1187,8 @@ function minusApplyItems() {
 window.onMinusApplying = () => { S.minusApplying = true; if (top().id === 'minus') renderMinus(); };
 window.onMinusApplied = (r) => {
   S.minusApplying = false;
-  const W = { empty: 'Upiši SAP HR broj i lozinku.', auth: 'StoreFront nije prihvatio SAP HR broj ili lozinku. Ništa nije poslano.', nonstore: 'StoreFront kaže da korisnik nije iz prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', wrongstore: 'StoreFront kaže da korisnik nije iz ove prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', login: 'StoreFront traži prijavu. Ništa nije poslano.' };
+  const W = { empty: 'Upiši SAP HR broj i lozinku.', auth: 'StoreFront nije prihvatio SAP HR broj ili lozinku. Ništa nije poslano.', nonstore: 'StoreFront kaže da korisnik nije iz prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', wrongstore: 'StoreFront kaže da korisnik nije iz ove prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', login: 'StoreFront traži prijavu. Ništa nije poslano.', nouser: 'StoreFront nije dao tvoj SAP HR broj. Ništa nije poslano: tapni „Upiši ručno“.' };
+  if (r && r.kept && r.why === 'auth') W.auth = 'StoreFront nije prihvatio lozinku iz postavki za potvrdu. Ništa nije poslano. Sljedeći put je upiši ručno, ili je promijeni u Postavke → Prijava.';
   const sentItems = S.minusSending || [];
   const adjustOnly = !!S.minusSendingAdjust;
   S.minusSending = null;
@@ -1367,7 +1411,11 @@ function renderNews() {
   const box = $('#newsWrap');
   const st = S.user.mj;
   const busy = S.mj.busy;
-  const stateLine = `<div class="mj-state"><span>${busy ? '<i class="mj-busy"></i>Učitavam iz MYJYSK…' : st && st.at ? `Stanje ${esc(ageText(st.at))}${cfg().mj ? ' · samo se osvježi u 8:00' : ''}` : ''}</span>${busy ? '' : '<button class="text-btn" type="button" data-mj="refresh">Osvježi</button>'}</div>`;
+  // what the screen shows is always the last good read; the line says how old it is and what is going on now
+  const ERR = { offline: 'Nema internet veze', error: 'MYJYSK nije odgovorio', login: 'Sesija je istekla' };
+  const err = !busy && S.mj.err && ERR[S.mj.err] ? `<b class="mj-err">${ERR[S.mj.err]}</b> · ` : '';
+  const when = st && st.at ? `${busy ? 'Prikazano' : 'Zadnje osvježeno'} ${esc(ageText(st.at))}` : '';
+  const stateLine = `<div class="mj-state"><span>${busy ? `<i class="mj-busy"></i>Osvježavam iz MYJYSK…${when ? ` <small>${when}</small>` : ''}` : `${err}${when}${when && cfg().mj && !err ? ' · samo se osvježi u 8:00' : ''}`}</span>${busy ? '' : '<button class="text-btn" type="button" data-mj="refresh">Osvježi</button>'}</div>`;
   const login = st && st.login
     ? `<button class="orders-bar" type="button" data-mj="login">${icon('info')}<span><b>Prijavi se ponovo u MYJYSK</b><small>Prijava je istekla, pa se zadaci i vijesti ne mogu osvježiti.</small></span><span class="go">Prijava</span></button>`
     : '';
@@ -1587,7 +1635,7 @@ function renderHome() {
   $('#planCount').hidden = !has;
   const count = S.index.names.length;
   const ol = S.user.orders && S.user.orders.list;
-  $('#homeStats').textContent = has && S.mode === 'orders'
+  $('#homeStats').textContent = S.mode === 'orders'
     ? (ol ? `${ol.length} ${plural(ol.length, 'narudžba', 'narudžbe', 'narudžbi')} kupaca` : 'Narudžbe još nisu učitane')
     : has
       ? `${artikala(count)} u ${S.plans.length} ${plural(S.plans.length, 'planogramu', 'planograma', 'planograma')}`
@@ -1603,22 +1651,26 @@ function renderHome() {
     renderNews();
     return;
   }
-  $('#welcome').hidden = has;
-  $('#searchForm').hidden = !has;
-  $('#homeDock').hidden = !has;
+  const ord = S.mode === 'orders';
+  $('#welcome').hidden = has || ord;
+  $('#searchForm').hidden = !(has || ord);
+  $('#homeDock').hidden = !(has || ord);
   const q = $('#q').value.trim();
-  $('#results').hidden = !has || !q;
-  $('#recentWrap').hidden = !has || !!q;
-  const recent = S.user.recent.filter((r) => S.index.byNum.has(r.num));
+  $('#results').hidden = !(has || ord) || !q;
+  $('#recentWrap').hidden = !(has || ord) || !!q;
+  const favs = (S.user.favs || []).filter((n) => S.index.byNum.has(n));
+  const recent = S.user.recent.filter((r) => S.index.byNum.has(r.num) && !favs.includes(r.num));
+  $('#favWrap').hidden = !favs.length;
+  $('#favs').innerHTML = favs.length ? `<div class="list">${favs.map((n) => itemRow(n)).join('')}</div>` : '';
   $('#recent').innerHTML = recent.length ? `<div class="list">${recent.map((r) => itemRow(r.num)).join('')}</div>` : '';
   renderOrdersBar();
   renderClearBar();
   renderMinusBar();
-  $('#recentEmpty').hidden = recent.length > 0;
+  $('#recentEmpty').hidden = recent.length > 0 || favs.length > 0;
   $('#recentHead').hidden = recent.length === 0;
   for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
   $('#q').placeholder = S.mode === 'orders' ? 'Šifra artikla, ime kupca ili telefon' : 'Šifra ili naziv artikla';
-  if (S.mode === 'orders' && has) { runOrdersSearch(); return; }
+  if (S.mode === 'orders') { runOrdersSearch(); return; }
   if (q) runSearch();
 }
 
@@ -1721,7 +1773,8 @@ function renderItem() {
   let h = `<div class="head">
       ${thumb(num, 'thumb-lg')}
       <div class="head-text">
-        <span class="code-chip">${esc(num)}</span>
+        <span class="head-acts"><button class="code-chip" type="button" data-copy="${esc(num)}" aria-label="Kopiraj šifru ${esc(num)}">${esc(num)} ${icon('copy', 'ico-sm')}</button>
+          <button class="fav-btn" type="button" data-fav="${esc(num)}" aria-pressed="${isFav(num)}" aria-label="${isFav(num) ? 'Ukloni iz favorita' : 'Dodaj u favorite'}">${isFav(num) ? '★' : '☆'}</button></span>
         <h2 class="title">${esc(it.nm) || 'Bez naziva'}</h2>
         ${section ? `<p class="sub">${esc(section)}</p>` : ''}
       </div>
@@ -2799,8 +2852,16 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
     if (!t) return;
+    if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
+    if (t.dataset.fav) {
+      toggleFav(t.dataset.fav);
+      t.setAttribute('aria-pressed', String(isFav(t.dataset.fav)));
+      t.textContent = isFav(t.dataset.fav) ? '★' : '☆';
+      return;
+    }
+    if (t.dataset.ovw) { setCfg({ ordCompact: t.dataset.ovw === 'compact' }); runOrdersSearch(); return; }
     if (t.dataset.num) { closeSheet(); openItem(t.dataset.num); return; }
     if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
     if (t.dataset.openClear) { openClearance(); return; }

@@ -457,6 +457,12 @@ svg { display: block; }
   margin: 8px 0 18px;
 }
 .head-text { min-width: 0; flex: 1; }
+.head-acts { display: flex; align-items: center; gap: 8px; }
+button.code-chip { border: 0; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+button.code-chip:active { transform: scale(.96); }
+.code-chip .ico-sm { width: 15px; height: 15px; opacity: .75; }
+.fav-btn { border: 0; background: none; font-size: 24px; line-height: 1; padding: 6px 8px; color: var(--ink-2); cursor: pointer; }
+.fav-btn[aria-pressed="true"] { color: #f2a900; }
 .code-chip {
   display: inline-block;
   padding: 4px 10px 3px;
@@ -469,6 +475,7 @@ svg { display: block; }
   font-variant-numeric: tabular-nums;
 }
 .title {
+  overflow-wrap: anywhere;
   margin: 8px 0 4px;
   font-size: 21px;
   line-height: 1.22;
@@ -1055,6 +1062,8 @@ svg { display: block; }
 .mj-state { display: flex; align-items: center; gap: 10px; margin: 0 2px 14px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
 .mj-state span { flex: 1; min-width: 0; }
 .mj-state .text-btn { padding: 4px 2px; font-size: 14px; }
+.mj-state .mj-err { color: var(--danger); }
+.mj-state small { font-weight: 500; opacity: .8; }
 .mj-busy { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 2px solid var(--primary-soft); border-top-color: var(--primary); border-radius: 50%; vertical-align: -1px; animation: mjspin 0.8s linear infinite; }
 @keyframes mjspin { to { transform: rotate(360deg); } }
 .mj-sec { margin: 0 0 22px; }
@@ -1127,3 +1136,15 @@ svg { display: block; }
 .mp-picks { margin: 6px 0 2px; }
 .mp-pending { border: 1.5px solid var(--danger); }
 .mp-pending .mp-apply, .mp-pending .text-btn { margin: 8px 14px 12px; width: auto; }
+
+/* customer orders: compact view and the view switch */
+.ord-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ord-head .count-line { margin-bottom: 8px; flex: 1; min-width: 160px; }
+.seg-mini { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--primary-soft); margin-bottom: 8px; }
+.seg-mini button { border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); padding: 5px 11px; border-radius: 999px; }
+.seg-mini button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.ocard-c { display: block; width: 100%; text-align: left; border: 0; font: inherit; color: inherit; margin-bottom: 8px; padding: 10px 14px; }
+.ocard-c .ocard-top b { font-size: 14.5px; }
+.oc-lines { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12.5px; color: var(--ink-2); }
+.oc-line .code { font-weight: 800; color: var(--ink); }
+.oc-more { font-weight: 700; color: var(--ink-3); }
