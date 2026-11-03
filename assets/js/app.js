@@ -424,7 +424,8 @@ window.onUpdate = (r) => {
     if (S.updManual) toast('Imaš najnoviju verziju.');
   } else if (r.state === 'error') {
     S.update = null;
-    if (S.updManual) toast('Provjera nije uspjela. Provjeri vezu.');
+    // the reason is shown too: a network problem and a file that does not match are different things
+    if (S.updManual) toast(`Provjera nije uspjela${r.msg ? ` (${String(r.msg).slice(0, 80)})` : ''}. Provjeri vezu.`);
   } else S.update = r;
   if (r.state !== 'downloading') S.updManual = false;
   renderUpdate();
