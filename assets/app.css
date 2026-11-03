@@ -1150,34 +1150,26 @@ button.code-chip:active { transform: scale(.96); }
 .oc-more { font-weight: 700; color: var(--ink-3); }
 
 /* first screen: sign-in (shown until the employee signs in or chooses later) */
-.gt { position: fixed; inset: 0; z-index: 90; overflow: hidden; color: #eef1fb; font-family: inherit;
-  background: radial-gradient(120% 70% at 10% 0%, #3b5bff 0%, transparent 60%), radial-gradient(100% 60% at 100% 100%, #7a3cf0 0%, transparent 60%), #0d1224; }
+.gt { position: fixed; inset: 0; z-index: 90; overflow-y: auto; background: var(--bg, #f3f4f7); color: var(--ink, #131620); }
 .gt[hidden] { display: none; }
-.gt-orb { position: absolute; border-radius: 50%; filter: blur(40px); opacity: .25; pointer-events: none; }
-.gt-o1 { width: 220px; height: 220px; background: #ffb020; top: -60px; right: -70px; }
-.gt-o2 { width: 260px; height: 260px; background: #2fd1ff; bottom: 120px; left: -120px; opacity: .22; }
-.gt-wrap { position: relative; height: 100%; padding: calc(env(safe-area-inset-top) + 56px) 26px calc(env(safe-area-inset-bottom) + 26px); display: flex; flex-direction: column; overflow-y: auto; }
-.gt-brand { display: flex; align-items: center; gap: 14px; }
-.gt-mark { width: 58px; height: 58px; border-radius: 19px; background: linear-gradient(145deg, #ffffff, #dfe6ff); display: grid; place-items: center; box-shadow: 0 14px 30px rgba(0,0,0,.35); flex: none; }
-.gt-mark svg { width: 32px; height: 32px; stroke: #2b50e6; fill: none; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
-.gt-brand b { display: block; font-size: 20px; font-weight: 800; }
-.gt-brand small { font-size: 13px; color: #a9b5e8; font-weight: 600; }
-.gt h1 { margin: 40px 0 8px; font-size: 34px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; color: #fff; }
-.gt h1 span { background: linear-gradient(90deg, #9db3ff, #ffffff); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.gt-lead { margin: 0 0 26px; font-size: 15px; line-height: 1.5; color: #b8c2e6; }
-.gt-glass { border-radius: 26px; padding: 22px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 24px 60px rgba(0,0,0,.35); }
-.gt-f { position: relative; display: flex; align-items: center; height: 62px; border-radius: 17px; background: rgba(8,12,30,.45); border: 1.5px solid rgba(255,255,255,.12); margin-bottom: 14px; padding: 0 16px; }
-.gt-f:focus-within { border-color: #7f9bff; box-shadow: 0 0 0 5px rgba(127,155,255,.18); }
-.gt-lab { position: absolute; left: 14px; top: -9px; font-size: 11.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #9db3ff; background: #1a2146; padding: 0 6px; border-radius: 6px; }
-.gt-f input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 18px; font-weight: 700; letter-spacing: .02em; }
-.gt-f input::placeholder { color: #6c7599; }
-.gt-eye { border: 0; width: 38px; height: 38px; border-radius: 12px; background: rgba(255,255,255,.08); display: grid; place-items: center; flex: none; margin-left: 6px; }
-.gt-eye svg { width: 18px; height: 18px; stroke: #c9d3f5; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.gt-msg { margin: 0 2px 14px; font-size: 14px; line-height: 1.4; font-weight: 600; color: #ffd0cc; }
+.gt-wrap { min-height: 100%; padding: calc(env(safe-area-inset-top) + 56px) 22px calc(env(safe-area-inset-bottom) + 28px); display: flex; flex-direction: column; }
+.gt-mark { width: 56px; height: 56px; border-radius: 18px; background: linear-gradient(135deg, #2b50e6, #6b3fe0); display: grid; place-items: center; box-shadow: 0 10px 24px rgba(43,80,230,.25); }
+.gt-mark svg { width: 28px; height: 28px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gt h1 { margin: 28px 0 8px; font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -.01em; }
+.gt-lead { margin: 0 0 26px; font-size: 15px; line-height: 1.5; color: var(--ink-2, #596072); }
+.gt-card { background: var(--surface, #fff); border-radius: 20px; padding: 18px; box-shadow: 0 1px 3px rgba(20,30,70,.08), 0 6px 20px rgba(20,30,70,.06); }
+.gt-field { display: block; margin-bottom: 14px; }
+.gt-lab { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2, #596072); margin: 0 0 6px; }
+.gt-field input, .gt-pass { display: flex; align-items: center; }
+.gt-field input { width: 100%; height: 52px; border-radius: 14px; border: 1.5px solid #dfe3ec; background: #fbfcfe; padding: 0 14px; font: inherit; font-size: 16px; color: var(--ink, #131620); outline: 0; }
+.gt-field input:focus { border-color: var(--primary, #2b50e6); background: #fff; box-shadow: 0 0 0 4px rgba(43,80,230,.12); }
+.gt-pass { position: relative; }
+.gt-pass input { padding-right: 76px; }
+.gt-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: #8a91a3; padding: 8px 10px; }
+.gt-msg { margin: 0 0 14px; background: #fdecea; color: #b42318; border-radius: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
 .gt-msg[hidden] { display: none; }
-.gt-cta { width: 100%; height: 60px; border: 0; border-radius: 19px; background: linear-gradient(90deg, #ffffff, #e3e9ff); color: #1b2a6b; font: inherit; font-weight: 800; font-size: 17px; box-shadow: 0 14px 30px rgba(0,0,0,.35); }
+.gt-cta { width: 100%; height: 54px; margin-top: 6px; border: 0; border-radius: 16px; background: var(--primary, #2b50e6); color: #fff; font: inherit; font-weight: 800; font-size: 16px; box-shadow: 0 8px 18px rgba(43,80,230,.28); }
 .gt-cta:disabled { opacity: .6; }
-.gt-foot { margin-top: auto; padding-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.gt-sec { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #8f9bcb; font-weight: 600; }
-.gt-sec svg { width: 14px; height: 14px; stroke: #8f9bcb; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.gt-later { border: 0; background: none; font: inherit; font-size: 14px; color: #b8c2e6; font-weight: 700; padding: 8px; }
+.gt-note { display: flex; gap: 10px; align-items: flex-start; margin-top: 18px; font-size: 13px; line-height: 1.45; color: var(--ink-2, #596072); }
+.gt-note i { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--soft, #e8edff); color: var(--primary, #2b50e6); font-style: normal; font-weight: 800; font-size: 12px; display: grid; place-items: center; margin-top: 1px; }
+.gt-later { margin: auto auto 0; padding: 36px 8px 8px; border: 0; background: none; font: inherit; font-size: 15px; color: #8a91a3; font-weight: 700; }
