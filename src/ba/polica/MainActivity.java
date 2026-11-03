@@ -487,6 +487,9 @@ public class MainActivity extends Activity {
 
     private boolean probing;
 
+    // the login typed on the first screen: checked with StoreFront once it is saved (answer: window.onLoginSaved)
+    private boolean loginCheck;
+
     private void probeStore() {
         if (probing) return;
         probing = true;
@@ -494,6 +497,17 @@ public class MainActivity extends Activity {
             @Override
             public void done(boolean online, String counts) {
                 probing = false;
+                if (loginCheck) {
+                    loginCheck = false;
+                    if (AutoLogin.refused(MainActivity.this)) {
+                        // StoreFront does not accept this password: forget it, the first screen asks again
+                        Secret.clear(MainActivity.this);
+                        AutoLogin.reset(MainActivity.this);
+                        runJs("window.onLoginSaved&&onLoginSaved(false,'refused')");
+                    } else {
+                        runJs("window.onLoginSaved&&onLoginSaved(" + online + "," + org.json.JSONObject.quote(online ? "ok" : "offline") + ")");
+                    }
+                }
                 runJs("window.onStoreStatus&&onStoreStatus(" + online + "," + org.json.JSONObject.quote(counts) + ")");
             }
         });
@@ -1169,6 +1183,34 @@ public class MainActivity extends Activity {
                     i.putExtra(MyjyskActivity.EXTRA_MODE, "plans");
                     i.putExtra(MyjyskActivity.EXTRA_URL, url);
                     startActivityForResult(i, REQ_PLANSWEB);
+                }
+            });
+        }
+
+        /**
+         * The login typed on the app's first screen: kept encrypted like the one in the settings, then checked with
+         * StoreFront. Answer: window.onLoginSaved(ok, why): ok | refused | offline | empty | save.
+         */
+        @JavascriptInterface
+        public void saveLogin(final String user, final String pass) {
+            final String u = user == null ? "" : user.trim();
+            final String p = pass == null ? "" : pass;
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (u.isEmpty() || p.isEmpty() || u.length() > 60 || p.length() > 200) {
+                        runJs("window.onLoginSaved&&onLoginSaved(false,'empty')");
+                        return;
+                    }
+                    if (!Secret.save(MainActivity.this, u, p)) {
+                        runJs("window.onLoginSaved&&onLoginSaved(false,'save')");
+                        return;
+                    }
+                    AutoLogin.reset(MainActivity.this);
+                    getSharedPreferences("sap", MODE_PRIVATE).edit().remove(SAP_KEPT_BAD).apply();
+                    loginCheck = true;
+                    probing = false; // a check that was running answers for the old login: start again with the new one
+                    probeStore();
                 }
             });
         }

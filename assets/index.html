@@ -242,5 +242,29 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script type="module" src="js/app.js"></script>
+  <section id="gate" class="gt" hidden aria-label="Prijava">
+    <div class="gt-orb gt-o1"></div><div class="gt-orb gt-o2"></div>
+    <div class="gt-wrap">
+      <div class="gt-brand">
+        <div class="gt-mark"><svg viewBox="0 0 24 24"><path d="M3.5 8 12 3.5 20.5 8 12 12.5z"/><path d="M3.5 12 12 16.5 20.5 12"/><path d="M3.5 16 12 20.5 20.5 16"/></svg></div>
+        <div><b>@APP@</b><small>Planogrami · narudžbe · MYJYSK</small></div>
+      </div>
+      <h1>Prijavi se i<br><span>kreni u smjenu</span></h1>
+      <p class="gt-lead">Ista korisnička oznaka i lozinka kao u MYJYSK i StoreFront. Čuva se samo na ovom telefonu, šifrovano.</p>
+      <form class="gt-glass" id="gateForm" autocomplete="on">
+        <label class="gt-f" for="gateUser"><span class="gt-lab">Korisničko ime</span>
+          <input id="gateUser" name="username" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="username" required></label>
+        <label class="gt-f" for="gatePass"><span class="gt-lab">Lozinka</span>
+          <input id="gatePass" name="password" type="password" autocapitalize="off" autocorrect="off" autocomplete="current-password" required>
+          <button class="gt-eye" type="button" id="gateEye" aria-label="Prikaži lozinku"><svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg></button></label>
+        <p class="gt-msg" id="gateMsg" role="status" hidden></p>
+        <button class="gt-cta" type="submit" id="gateGo">Prijavi se</button>
+      </form>
+      <div class="gt-foot">
+        <div class="gt-sec"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Šifrovano na ovom telefonu</div>
+        <button class="gt-later" type="button" id="gateLater">Kasnije</button>
+      </div>
+    </div>
+  </section>
 </body>
 </html>

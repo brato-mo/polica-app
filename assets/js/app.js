@@ -320,6 +320,80 @@ function installUpdate() {
   renderUpdate();
 }
 
+// ------------------------------------------------------- first screen: sign-in
+
+/** Shown until the employee signs in (or chooses "Kasnije" for this start). Nothing else is shown before it. */
+function gateNeeded() {
+  if (S.gateLater) return false;
+  try { return !!A.loginState && A.loginState() !== 'ok'; } catch (e) { return false; }
+}
+
+function showGate(msg = '') {
+  const g = $('#gate');
+  if (!g) return;
+  g.hidden = false;
+  setGateMsg(msg);
+  setTimeout(() => { if (!$('#gateUser').value) $('#gateUser').focus(); }, 300);
+}
+
+function setGateMsg(msg) {
+  const m = $('#gateMsg');
+  m.textContent = msg || '';
+  m.hidden = !msg;
+}
+
+function hideGate() {
+  $('#gate').hidden = true;
+  $('#gatePass').value = '';
+}
+
+function gateBusy(on) {
+  $('#gateGo').disabled = on;
+  $('#gateGo').textContent = on ? 'Provjeravam prijavu…' : 'Prijavi se';
+}
+
+$('#gateForm')?.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const u = $('#gateUser').value.trim(), p = $('#gatePass').value;
+  if (!u || !p) { setGateMsg('Upiši korisničko ime i lozinku.'); return; }
+  setGateMsg('');
+  gateBusy(true);
+  try { A.saveLogin(u, p); } catch (e) { gateBusy(false); setGateMsg('Ova verzija aplikacije ne zna prijavu. Javi se meni.'); }
+});
+
+$('#gateEye')?.addEventListener('click', () => {
+  const f = $('#gatePass');
+  f.type = f.type === 'password' ? 'text' : 'password';
+  $('#gateEye').setAttribute('aria-label', f.type === 'password' ? 'Prikaži lozinku' : 'Sakrij lozinku');
+});
+
+$('#gateLater')?.addEventListener('click', () => { S.gateLater = true; hideGate(); });
+
+window.onLoginSaved = (ok, why) => {
+  gateBusy(false);
+  if (ok) {
+    hideGate();
+    toast('Prijava je uspjela.');
+    checkOnline();
+    renderHome();
+    return;
+  }
+  if (why === 'offline') {
+    // the login is kept; StoreFront cannot be reached right now, so it is checked again later
+    hideGate();
+    toast('Prijava je sačuvana. Provjeri kad budeš na mreži.');
+    checkOnline();
+    return;
+  }
+  const W = {
+    refused: 'StoreFront ne prihvata ovu lozinku. Provjeri je i pokušaj ponovo.',
+    empty: 'Upiši korisničko ime i lozinku.',
+    save: 'Prijava se ne može sačuvati na ovom telefonu.',
+  };
+  $('#gatePass').value = '';
+  setGateMsg(W[why] || 'Prijava nije uspjela. Pokušaj ponovo.');
+};
+
 function checkOnline() {
   try { if (A.storeStatus) A.storeStatus(); } catch (e) { /* ignore */ }
 }
@@ -2937,6 +3011,7 @@ function boot() {
   syncWatch();
   syncMyjysk(false);
   renderHome();
+  if (gateNeeded()) showGate();
   if (S.mode === 'news') freshenMyjysk();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);
