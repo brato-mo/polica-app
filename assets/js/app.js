@@ -364,6 +364,7 @@ $('#gateForm')?.addEventListener('submit', (ev) => {
 $('#gateEye')?.addEventListener('click', () => {
   const f = $('#gatePass');
   f.type = f.type === 'password' ? 'text' : 'password';
+  $('#gateEye').textContent = f.type === 'password' ? 'Prikaži' : 'Sakrij';
   $('#gateEye').setAttribute('aria-label', f.type === 'password' ? 'Prikaži lozinku' : 'Sakrij lozinku');
 });
 
