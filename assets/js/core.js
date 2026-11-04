@@ -890,6 +890,51 @@ export function placeOf(plan, oc) {
   };
 }
 
+/**
+ * An article that is only on a product list ("Segment 12/1") is not drawn by itself, but its shelf is: the drawing
+ * page with that segment and shelf, and the space on it from the shelf's own label up to the shelf above. Returns an
+ * occurrence like a drawn one ({p, g, b, k}, with whole = true), or null when no drawing has that shelf.
+ */
+export function shelfOfRow(plan, row) {
+  const m = row && row.fx && FIXEL_RX.exec(row.fx);
+  if (!m) return null;
+  const want = fixelKey(m[1], m[2]);
+  // the drawing nearest to the list page first (the list follows its drawing)
+  const order = plan.pages.map((pg, i) => i).filter((i) => plan.pages[i].segs && plan.pages[i].segs.length)
+    .sort((a, b) => Math.abs(a - row.p) - Math.abs(b - row.p));
+  for (const pi of order) {
+    const pg = plan.pages[pi];
+    const g = pg.segs.findIndex((x) => fixelKey(x.s, x.sh) === want);
+    if (g < 0) continue;
+    const seg = pg.segs[g];
+    const col = seg.col >= 0 && pg.cols && pg.cols[seg.col] ? pg.cols[seg.col] : null;
+    const x0 = col ? Math.min(col.x0, seg.b[0]) : seg.b[0];
+    const x1 = col ? Math.max(col.x1, seg.b[2]) : seg.b[2];
+    // the shelf above in the same column: its label is where this shelf's space ends
+    let top = -Infinity;
+    for (const o of pg.segs) {
+      if (o === seg || o.b[3] > seg.b[1]) continue;
+      if (o.b[2] < x0 || o.b[0] > x1) continue;
+      top = Math.max(top, o.b[3]);
+    }
+    if (!Number.isFinite(top)) top = Math.max(0, seg.b[1] - 6 * (seg.b[3] - seg.b[1] || 10));
+    // the shelf is as wide as what is drawn on it: the products of the same shelf, with their photos
+    let lx = x0, rx = x1;
+    for (const it of Object.values(plan.items)) {
+      for (const o of it.oc) {
+        if (o.p !== pi || o.g !== g) continue;
+        const ob = o.k || o.b;
+        lx = Math.min(lx, ob[0], o.b[0]);
+        rx = Math.max(rx, ob[2], o.b[2]);
+        top = Math.min(top, ob[1] - 1);
+      }
+    }
+    const b = [round1(lx), round1(top + 1), round1(rx), round1(seg.b[3])];
+    return { p: pi, g, b, k: b, whole: true };
+  }
+  return null;
+}
+
 /** All shelves of the module an occurrence is in, top to bottom (for the side view). */
 export function moduleShelves(plan, oc) {
   const pg = plan.pages[oc.p];

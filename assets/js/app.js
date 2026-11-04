@@ -132,7 +132,19 @@ function locationsOf(num) {
     const meta = S.plans.find((p) => p.id === e.id);
     for (const oc of e.it.oc) out.push({ e, meta, oc, place: core.placeOf(e.plan, oc) });
     if (!e.it.oc.length) {
-      for (const r of e.it.rw) out.push({ e, meta, row: r, place: null });
+      // only on a product list: show its shelf on the drawing; the list itself only when no drawing has that shelf
+      const seen = new Set();
+      for (const r of e.it.rw) {
+        const oc = core.shelfOfRow(e.plan, r);
+        if (oc) {
+          const k = `${oc.p}:${oc.g}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          out.push({ e, meta, oc, row: r, place: core.placeOf(e.plan, oc) });
+        } else {
+          out.push({ e, meta, row: r, place: null });
+        }
+      }
       if (!e.it.rw.length) out.push({ e, meta, place: null });
     }
   }
@@ -1874,7 +1886,7 @@ function renderItem() {
         <div><span>${isBar(p.fixture) ? 'Šipka' : 'Polica'}</span><b>${esc(p.shelf)}</b></div>
         <div><span>Notch</span><b>${esc(p.notch)}</b></div>
       </div>
-      <div class="loc-foot"><p>${whereText(p)}</p>${sideView(plan, L.oc, p)}</div>
+      <div class="loc-foot"><p>${whereText(p)}${L.oc.whole ? ` Artikal nije posebno nacrtan (na listi piše ${esc(L.row && L.row.fx ? L.row.fx : `segment ${p.segment}`)}), pa je na crtežu označena cijela polica.` : ''}</p>${sideView(plan, L.oc, p)}</div>
     </div>`;
   } else if (L.row) {
     h += `<div class="loc loc-off">
