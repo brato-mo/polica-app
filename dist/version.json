@@ -1,7 +1,7 @@
 {
- "code": 43,
- "name": "1.42",
- "notes": "Prvi ekran za prijavu u svijetlom izgledu; provjera apdejta kaže pravi razlog kad ne uspije",
+ "code": 44,
+ "name": "1.43",
+ "notes": "Artikal koji je samo na listi pokazuje se na crtežu: označena je njegova polica (modul, polica, notch); lista samo kad crteža nema",
  "size": 1954316,
- "sha256": "87298904330e84d2d534636b50e5c52280c5555658a83093b9289ab9f3be034d"
+ "sha256": "3d36e150d07a055a5e73492ab7f3365be59e1a68201dcbf15fe836d7a4dbaed8"
 }
