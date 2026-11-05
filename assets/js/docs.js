@@ -164,11 +164,61 @@ export async function readPlanogram(url, onStep, { pictures = true } = {}) {
       if (onStep) onStep(0.3 + (0.7 * (k + 1)) / work.length, i + 1, n, 'pictures');
     }
     const plan = buildPlan(pages);
+    rescueLabels(plan, raw);
     plan.v = PLAN_VERSION;
     for (const num of thumbs.keys()) if (plan.items[num]) plan.items[num].im = 1;
     return { plan, thumbs };
   } finally {
     await task.destroy();
+  }
+}
+
+/**
+ * Articles that came out "only on the list" although their number is written on a drawing (a label the reading of
+ * the drawing missed): placed on that drawing after all, on the shelf under the number. The list's own shelf
+ * ("Segment 1/3") decides when it is on that page; the drawings before the list come first, as each department's
+ * product list follows its own drawings.
+ */
+function rescueLabels(plan, raw) {
+  const drawn = plan.pages.map((pg, i) => i).filter((i) => plan.pages[i].segs && plan.pages[i].segs.length);
+  for (const [num, it] of Object.entries(plan.items)) {
+    if (it.oc.length || !it.rw.length) continue;
+    const row = it.rw[0];
+    const fx = /Segment\s+([0-9]+(?:-[0-9]+)?)\s*\/\s*([0-9]+)/i.exec(row.fx || '');
+    const order = [...drawn.filter((i) => i < row.p).reverse(), ...drawn.filter((i) => i > row.p)];
+    for (const pi of order) {
+      const pg = plan.pages[pi];
+      let lab = null;
+      for (const t of raw[pi].items) {
+        const str = t.str.replace(/\s+/g, ' ');
+        const at = str.search(new RegExp(`(^|[^0-9])${num}([^0-9]|$)`));
+        if (at < 0 || /Segment|Notch/i.test(str)) continue;
+        const m = t.t;
+        const h = Math.hypot(m[2], m[3]) || 8;
+        const k = (t.w || h * 0.55 * str.length) / Math.max(1, str.length);
+        const off = at + (str[at] === num[0] ? 0 : 1);
+        const b = [m[4] + k * off, m[5] - h, m[4] + k * (off + num.length), m[5] + h * 0.2];
+        if (!lab || h > lab.h) lab = { b, h };
+      }
+      if (!lab) continue;
+      // the shelf under the number: the nearest segment line below it that the number stands over
+      const cxl = (lab.b[0] + lab.b[2]) / 2;
+      let g = -1, best = Infinity;
+      pg.segs.forEach((sg, si) => {
+        const dy = sg.b[1] - lab.b[3];
+        if (dy < -lab.h) return;
+        const col = sg.col >= 0 && pg.cols && pg.cols[sg.col] ? pg.cols[sg.col] : null;
+        const x0 = col ? Math.min(col.x0, sg.b[0]) : sg.b[0] - 200, x1 = col ? Math.max(col.x1, sg.b[2]) : sg.b[2] + 200;
+        if (cxl < x0 || cxl > x1) return;
+        if (dy < best) { best = dy; g = si; }
+      });
+      if (g < 0) continue; // not standing over any shelf: a mention in a note, not a label
+      // the list says which shelf: a number found on another shelf of the page is someone else's mention
+      if (fx && g >= 0 && `${pg.segs[g].s}/${pg.segs[g].sh}` !== `${fx[1]}/${fx[2]}`) continue;
+      const r1 = (v) => Math.round(v * 10) / 10;
+      it.oc.push({ p: pi, b: lab.b.map(r1), g });
+      break;
+    }
   }
 }
 
@@ -259,6 +309,32 @@ export async function renderRegion(doc, pageNo, region, canvas, cssW, cssH, opts
   return { scale: s, photos, page };
 }
 
+/**
+ * Where an article number is written on a page (its label), in page space: [x0, y0, x1, y1], or null. For articles
+ * whose label the reading of the planogram missed: the number is on the drawing all the same.
+ */
+export async function findNumber(doc, pageNo, num) {
+  const page = await doc.getPage(pageNo);
+  const vp = page.getViewport({ scale: 1 });
+  const tc = await page.getTextContent();
+  let best = null;
+  for (const it of tc.items) {
+    if (typeof it.str !== 'string') continue;
+    const str = it.str.replace(/\s+/g, ' ');
+    const at = str.search(new RegExp(`(^|[^0-9])${num}([^0-9]|$)`));
+    if (at < 0 || /Segment|Notch/i.test(str)) continue;
+    const m = mul(vp.transform, it.transform);
+    const h = Math.hypot(m[2], m[3]) || Math.abs(m[3]) || 8;
+    const w = it.width || h * 0.55 * str.length;
+    // the part of the line that is the number (a label line may say "4912333 Plant pot ...")
+    const k = w / Math.max(1, str.length);
+    const off = at + (str[at] === num[0] ? 0 : 1);
+    const b = [m[4] + k * off, m[5] - h, m[4] + k * (off + num.length), m[5] + h * 0.2];
+    if (!best || h > best.h) best = { b, h }; // the big label under the photo rather than a mention in a note
+  }
+  return best ? best.b : null;
+}
+
 /** Photos on a page without drawing it (when the drawing could not record them). */
 export async function photosOf(doc, pageNo) {
   const page = await doc.getPage(pageNo);
@@ -269,8 +345,8 @@ export async function photosOf(doc, pageNo) {
  * The product's box on the page: stored at import, or found from the photos now.
  * plan: stored planogram, oc: the occurrence, photos: from renderRegion/photosOf.
  */
-export function blockFor(plan, oc, photos) {
-  if (oc.k) return oc.k;
+export function blockFor(plan, oc, photos, extra) {
+  if (oc.k && !extra) return oc.k;
   if (!photos || !photos.length) return null;
   const pg = plan.pages[oc.p];
   const seen = new Set();
@@ -284,7 +360,8 @@ export function blockFor(plan, oc, photos) {
       labels.push({ b: o.b, nums: [num] });
     }
   }
-  const lab = labels.find((l) => l.b.join(',') === oc.b.join(','));
+  if (extra) labels.push(extra); // a label found on the page now: { b, nums }
+  const lab = extra || labels.find((l) => l.b.join(',') === oc.b.join(','));
   if (!lab) return null;
   return productBlock({ w: pg.w, h: pg.h, labels }, lab, photos);
 }

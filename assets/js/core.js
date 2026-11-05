@@ -899,9 +899,10 @@ export function shelfOfRow(plan, row) {
   const m = row && row.fx && FIXEL_RX.exec(row.fx);
   if (!m) return null;
   const want = fixelKey(m[1], m[2]);
-  // the drawing nearest to the list page first (the list follows its drawing)
-  const order = plan.pages.map((pg, i) => i).filter((i) => plan.pages[i].segs && plan.pages[i].segs.length)
-    .sort((a, b) => Math.abs(a - row.p) - Math.abs(b - row.p));
+  // segment numbers start again in every department (0501 and 0502 both have "Segment 1/3"), and a product list
+  // follows the drawings of its own department: the drawings before the list, nearest first; only then the rest
+  const drawn = plan.pages.map((pg, i) => i).filter((i) => plan.pages[i].segs && plan.pages[i].segs.length);
+  const order = [...drawn.filter((i) => i < row.p).reverse(), ...drawn.filter((i) => i > row.p)];
   for (const pi of order) {
     const pg = plan.pages[pi];
     const g = pg.segs.findIndex((x) => fixelKey(x.s, x.sh) === want);

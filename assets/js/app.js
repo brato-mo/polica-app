@@ -1886,7 +1886,7 @@ function renderItem() {
         <div><span>${isBar(p.fixture) ? 'Šipka' : 'Polica'}</span><b>${esc(p.shelf)}</b></div>
         <div><span>Notch</span><b>${esc(p.notch)}</b></div>
       </div>
-      <div class="loc-foot"><p>${whereText(p)}${L.oc.whole ? ` Artikal nije posebno nacrtan (na listi piše ${esc(L.row && L.row.fx ? L.row.fx : `segment ${p.segment}`)}), pa je na crtežu označena cijela polica.` : ''}</p>${sideView(plan, L.oc, p)}</div>
+      <div class="loc-foot"><p>${whereText(p)}${L.oc.whole ? ` <span id="locNote">Mjesto je iz liste artikala (${esc(L.row && L.row.fx ? L.row.fx : `segment ${p.segment}`)}); tražim ga na crtežu…</span>` : ''}</p>${sideView(plan, L.oc, p)}</div>
     </div>`;
   } else if (L.row) {
     h += `<div class="loc loc-off">
@@ -1960,11 +1960,22 @@ async function paintCrop(L) {
   const plan = L.e.plan;
   const pageIdx = L.oc ? L.oc.p : L.row.p;
   const pg = plan.pages[pageIdx];
-  const key = L.oc ? `${L.e.id}:${L.oc.p}:${L.oc.b.join(',')}` : null;
-  let blk = L.oc ? (L.oc.k || blockCache.get(key) || null) : null;
-  const target = L.oc ? L.oc.b : L.row.b;
+  const whole = !!(L.oc && L.oc.whole);
+  const key = L.oc ? `${L.e.id}:${L.oc.p}:${L.oc.b.join(',')}${whole ? `:${S.item.num}` : ''}` : null;
+  let blk = L.oc ? (whole ? blockCache.get(key) || null : L.oc.k || blockCache.get(key) || null) : null;
+  let target = L.oc ? L.oc.b : L.row.b;
   const doc = await docs.openPlan(L.e.id);
   if (token !== cropToken) return;
+  // only on the product list: its number is written on the drawing all the same (under its photo); mark that,
+  // never the whole shelf. Not there: the shelf is shown with nothing marked.
+  let label = null;
+  if (whole) {
+    try { label = await docs.findNumber(doc, pageIdx + 1, S.item.num); } catch (e) { label = null; }
+    if (token !== cropToken) return;
+    if (label) target = label;
+    const note = $('#locNote');
+    if (note) note.textContent = label ? '' : `Na crtežu nema njegove šifre (na listi piše ${L.row && L.row.fx ? L.row.fx : 'ovaj segment'}): pokazana je samo polica.`;
+  }
   const region = (focus) => {
     const fw = focus[2] - focus[0], fh = focus[3] - focus[1];
     let w = Math.max(fw * 2.8, fh * 2.8 * (cw / ch), 200);
@@ -1977,15 +1988,25 @@ async function paintCrop(L) {
     y0 = Math.max(Math.min(y0, pg.h - h), Math.min(0, pg.h - h));
     return [x0, y0, x0 + w, y0 + h];
   };
-  const guess = blk || [target[0] - 10, target[1] - 50, target[2] + 10, target[3] + 30];
+  const guess = blk || (whole && !label ? L.oc.b : [target[0] - 10, target[1] - 50, target[2] + 10, target[3] + 30]);
   let reg = region(guess);
   const canvas = $('#crop canvas');
   const r = await docs.renderRegion(doc, pageIdx + 1, reg, canvas, cw, ch, { maxDpr: 2.5 });
   if (token !== cropToken) return;
+  if (whole && !label) {
+    // nothing to mark: the shelf without a highlight
+    svgClear($('#crop svg'), reg);
+    $('#crop').classList.add('is-ready');
+    const w0 = $('#crop .wait');
+    if (w0) w0.remove();
+    S.item.focus = null;
+    return;
+  }
   if (L.oc && !blk) {
-    blk = docs.blockFor(plan, L.oc, r.photos);
+    const extra = whole ? { b: label, nums: [S.item.num] } : undefined;
+    blk = docs.blockFor(plan, L.oc, r.photos, extra);
     if (!blk) {
-      try { blk = docs.blockFor(plan, L.oc, await docs.photosOf(doc, pageIdx + 1)); } catch (e) { blk = null; }
+      try { blk = docs.blockFor(plan, L.oc, await docs.photosOf(doc, pageIdx + 1), extra); } catch (e) { blk = null; }
     }
     if (blk) blockCache.set(key, blk);
     const inside = blk && blk[0] >= reg[0] && blk[2] <= reg[2] && blk[1] >= reg[1] && blk[3] <= reg[3];
@@ -2001,6 +2022,11 @@ async function paintCrop(L) {
   const w = $('#crop .wait');
   if (w) w.remove();
   S.item.focus = { id: L.e.id, page: pageIdx, box: spot };
+}
+
+function svgClear(svg, reg) {
+  svg.setAttribute('viewBox', `${reg[0]} ${reg[1]} ${reg[2] - reg[0]} ${reg[3] - reg[1]}`);
+  svg.innerHTML = '';
 }
 
 function drawSpot(svg, reg, b) {
@@ -2025,7 +2051,8 @@ function openViewerForItem() {
   const L = locationsOf(S.item.num)[S.item.loc];
   if (!L) return;
   const page = L.oc ? L.oc.p : L.row ? L.row.p : 0;
-  const focus = S.item.focus && S.item.focus.page === page ? S.item.focus.box : L.oc ? L.oc.b : L.row ? L.row.b : null;
+  // a list-only article whose number is not on the drawing: the page without a highlight (never the whole shelf)
+  const focus = S.item.focus && S.item.focus.page === page ? S.item.focus.box : L.oc ? (L.oc.whole ? null : L.oc.b) : L.row ? L.row.b : null;
   viewer.open(L.e.id, page, focus);
 }
 
