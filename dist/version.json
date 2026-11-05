@@ -1,7 +1,7 @@
 {
- "code": 54,
- "name": "1.53",
- "notes": "Master provjera SM/DM: sve vrijednosti odjela odjednom — ukinuti sa SM/DM (riješi po smjernici, s prebacivanjem na zamjene), SM bez prodaje 30 dana, najprodavaniji bez SM",
+ "code": 55,
+ "name": "1.54",
+ "notes": "SM/DM, Master provjera i Najprodavanije samo za tvoj odjel (05 Homeware): po grupama proizvoda tvog planograma, i stari 21/81 artikli tih grupa; brže učitavanje i spremanje",
  "size": 1987342,
- "sha256": "63484d0fbccf750231b1356ad8f85cb311a5135d858091b10daaec26b241082d"
+ "sha256": "04a780bb7d195dd36a4b58d42cc6caf5fa94ce8e7846da014c342aba1fc3dd74"
 }

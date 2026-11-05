@@ -1276,3 +1276,9 @@ button.code-chip:active { transform: scale(.96); }
 .au-head[aria-expanded="true"] .chev { transform: rotate(90deg); }
 .au-why { margin: 10px 2px; color: var(--ink-2); font-size: 13.5px; line-height: 1.45; }
 .au-group .btn-small { margin-bottom: 8px; }
+.dept-groups { margin: 0 0 12px; padding: 10px 14px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); font-size: 13.5px; }
+.dept-groups summary { font-weight: 700; color: var(--ink-2); cursor: pointer; }
+.dept-groups p { margin: 8px 0; color: var(--ink-2); line-height: 1.4; }
+.dept-groups .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dept-groups .chip[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+.dept-groups .chip small { opacity: .6; margin-left: 2px; }

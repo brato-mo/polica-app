@@ -1599,6 +1599,59 @@ function onNewsClick(t) {
 //
 // Each job runs in a hidden StoreFront page with the employee's own sign-in and answers through window.onStoreTask.
 
+/**
+ * The employee's own department in StoreFront's terms: the product groups (e.g. 50101 Svijećnjaci) of the articles in
+ * his planograms whose title starts with the department number ("05 Homeware"). StoreFront's group 5 also holds
+ * cleaning, laundry and storage (other departments); old articles (21/81) that left the planogram are still in these
+ * groups, so they are found too. Learned once from StoreFront and kept; the employee can leave groups out.
+ */
+function deptPlans() {
+  const code = String(cfg().dept || '05');
+  return S.plans.filter((p) => String(p.title || core.planTitle(p.plan) || '').trim().startsWith(code));
+}
+const deptKey = () => deptPlans().map((p) => p.key || p.id).sort().join('|');
+function deptNums() {
+  const nums = new Set();
+  for (const p of deptPlans()) for (const [n, it] of Object.entries(p.plan.items)) if (it.oc.length || it.rw.length) nums.add(n);
+  return [...nums];
+}
+/** The kept groups for the planograms now on the phone, or null (not learned yet). */
+function deptGroups() {
+  const g = S.user.deptGroups;
+  return g && g.key === deptKey() && Array.isArray(g.groups) ? g.groups : null;
+}
+/** Groups that count: seen at least twice in the planogram (one stray article does not make a group his). */
+const deptUsed = () => (deptGroups() || []).filter((x) => x.n >= 2 && !(cfg().grpOff || {})[x.id]);
+const deptArg = () => { const u = deptUsed(); return u.length ? { cats: u.map((x) => x.id) } : {}; };
+const deptName = () => { const p = deptPlans()[0]; return p ? String(p.title || core.planTitle(p.plan)) : `grupa ${cfg().group || '5'}`; };
+const deptSig = () => deptUsed().map((x) => x.id).join(',');
+
+/** Learns the department's groups (once per set of planograms), then runs next(). */
+function withDept(next) {
+  if (deptGroups() || !deptPlans().length) { next(); return; }
+  S.deptBusy = true;
+  const ok = stCall({ mode: 'groups', nums: deptNums() }, (r) => {
+    S.deptBusy = false;
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.groups)) {
+      S.user.deptGroups = { key: deptKey(), at: Date.now(), groups: r.res.groups.slice(0, 80).map((x) => ({ id: String(x.id), title: String(x.title || ''), n: +x.n || 0 })) };
+      saveUser();
+    }
+    next();
+  });
+  if (!ok) { S.deptBusy = false; next(); }
+}
+
+/** The department's groups as chips: tap leaves one out (or takes it back). */
+function deptChips(screen) {
+  const g = deptGroups();
+  if (!g) return '';
+  const off = cfg().grpOff || {};
+  const used = g.filter((x) => x.n >= 2);
+  return `<details class="dept-groups"><summary>${esc(deptName())}: ${deptUsed().length} ${plural(deptUsed().length, 'grupa', 'grupe', 'grupa')} proizvoda iz StoreFronta</summary>
+    <p>Grupe u kojima su artikli tvog planograma. Gledaju se i stari artikli tih grupa koji više nisu u planogramu. Tapni grupu da je izbaciš ili vratiš.</p>
+    <div class="chips">${used.map((x) => `<button class="chip" type="button" aria-pressed="${!off[x.id]}" data-grp="${esc(x.id)}" data-grp-screen="${screen}">${esc(x.title || x.id)} <small>${x.n}</small></button>`).join('')}</div></details>`;
+}
+
 const stJobs = new Map();
 let stSeq = 0;
 function stCall(arg, cb) {
@@ -1722,15 +1775,21 @@ function openTop() {
   go('top');
   renderTop();
   const t = S.user.top;
-  if (!t || !t.list || Date.now() - t.at > 6 * 3600000) loadTop();
+  if (!t || !t.list || t.dept !== deptSig() || !deptGroups() || Date.now() - t.at > 6 * 3600000) loadTop();
 }
 
 function loadTop() {
   if (S.topBusy) return;
-  const ok = stCall({ mode: 'top', cat: cfg().group || '5', deep: 40 }, (r) => {
+  S.topBusy = true;
+  renderTop();
+  withDept(() => loadTop2());
+}
+
+function loadTop2() {
+  const ok = stCall({ mode: 'top', cat: cfg().group || '5', deep: 40, ...deptArg() }, (r) => {
     S.topBusy = false;
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.top = { at: Date.now(), list: r.res.list.slice(0, 80).map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, sold30: x.sold30, sold7: x.sold7 })) };
+      S.user.top = { dept: deptSig(), at: Date.now(), list: r.res.list.slice(0, 80).map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, sold30: x.sold30, sold7: x.sold7 })) };
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu. Otvori artikal u StoreFrontu i prijavi se.' : 'Najprodavanije se nije moglo učitati. Pokušaj ponovo.');
@@ -1738,9 +1797,7 @@ function loadTop() {
     renderTopBar();
     if (top().id === 'top') renderTop();
   });
-  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
-  S.topBusy = true;
-  renderTop();
+  if (!ok) { S.topBusy = false; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderTop(); }
 }
 
 function renderTop() {
@@ -1750,8 +1807,8 @@ function renderTop() {
   const days = S.topDays;
   const seg = `<div class="seg" role="tablist">${[7, 30].map((n) => `<button class="seg-btn" type="button" role="tab" aria-selected="${days === n}" data-top-days="${n}">${n} dana</button>`).join('')}</div>`;
   const head = `<div class="top-head">${seg}<button class="text-btn" type="button" data-top="refresh" ${S.topBusy ? 'disabled' : ''}>${icon('refresh')}Osvježi</button></div>`;
-  const busy = S.topBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam prodaju iz StoreFronta… (do pola minute)</p>' : '';
-  if (!t || !t.list) { box.innerHTML = `${head}${busy}${S.topBusy ? '' : '<p class="empty">Još nije učitano.</p>'}`; return; }
+  const busy = S.deptBusy ? '<p class="count-line"><i class="mj-busy"></i> Prvi put: tražim u StoreFrontu grupe proizvoda tvog odjela (iz planograma)…</p>' : S.topBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam prodaju iz StoreFronta…</p>' : '';
+  if (!t || !t.list) { box.innerHTML = `${head}${deptChips('top')}${busy}${S.topBusy ? '' : '<p class="empty">Još nije učitano.</p>'}`; return; }
   const key = days === 7 ? 'sold7' : 'sold30';
   const list = t.list.filter((x) => typeof x[key] === 'number' && x[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 40);
   const rows = list.map((x, i) => {
@@ -1760,8 +1817,8 @@ function renderTop() {
     if (S.index.byNum.has(x.num)) return `<div class="top-row">${rank}${itemRow(x.num, { sub })}</div>`;
     return `<div class="top-row">${rank}<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span></span>${sub}</span></div></div>`;
   });
-  box.innerHTML = `${head}${busy}
-    <p class="count-line">Odjel ${esc(cfg().group || '5')} · ${days === 7 ? 'zadnjih 7 dana (iz povijesti zalihe najprodavanijih)' : 'zadnjih 30 dana (StoreFront)'} · ${esc(ageText(t.at))}</p>
+  box.innerHTML = `${head}${deptChips('top')}${busy}
+    <p class="count-line">${esc(deptName())} · ${days === 7 ? 'zadnjih 7 dana (iz povijesti zalihe najprodavanijih)' : 'zadnjih 30 dana (StoreFront)'} · ${esc(ageText(t.at))}</p>
     ${rows.length ? `<div class="list">${rows.join('')}</div>` : '<p class="empty">Ništa prodano u tom periodu.</p>'}`;
 }
 
@@ -1791,15 +1848,22 @@ function openSm() {
   S.sm.result = null;
   go('smdm');
   renderSm();
-  loadSm();
+  const m = S.user.smdm;
+  if (!m || !m.list || m.dept !== deptSig() || !deptGroups() || Date.now() - m.at > 10 * 60000) loadSm(); // the last read is shown at once
 }
 
 function loadSm() {
   if (S.sm.busy) return;
-  const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st }, (r) => {
+  S.sm.busy = 'load';
+  renderSm();
+  withDept(() => loadSm2());
+}
+
+function loadSm2() {
+  const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st, ...deptArg() }, (r) => {
     S.sm.busy = '';
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.smdm = { v: 2, at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30, succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null })) };
+      S.user.smdm = { v: 3, dept: deptSig(), at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30, succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null })) };
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'SM vrijednosti se nisu mogle učitati. Pokušaj ponovo.');
@@ -1807,9 +1871,7 @@ function loadSm() {
     renderSmBar();
     if (top().id === 'smdm') renderSm();
   });
-  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
-  S.sm.busy = 'load';
-  renderSm();
+  if (!ok) { S.sm.busy = ''; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderSm(); }
 }
 
 function smSend(items) {
@@ -1832,7 +1894,6 @@ function smSend(items) {
     }
     renderSmBar();
     if (top().id === 'smdm') renderSm();
-    loadSm(); // read back what StoreFront now has
   });
   if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
   S.sm.busy = 'send';
@@ -1844,7 +1905,7 @@ function renderSm() {
   if (!box) return;
   const m = S.user.smdm;
   const list = (m && m.list) || [];
-  const busy = S.sm.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Čitam SM vrijednosti iz StoreFronta…</p>'
+  const busy = S.deptBusy ? '<p class="count-line"><i class="mj-busy"></i> Prvi put: tražim u StoreFrontu grupe proizvoda tvog odjela (iz planograma)…</p>' : S.sm.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Čitam SM vrijednosti iz StoreFronta…</p>'
     : S.sm.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
   const res = S.sm.result;
   const resLine = res ? (res.err ? `<p class="ar-err">${esc(res.err)}</p>`
@@ -1874,8 +1935,8 @@ function renderSm() {
       ${succ}
     </div>`;
   }).join('');
-  box.innerHTML = `<button class="orders-bar au-master" type="button" data-au-master>${icon('chart')}<span><b>Master provjera</b><small>Sve SM i DM vrijednosti odjela: ukinuti sa SM/DM i zamjene, SM bez prodaje, najprodavaniji bez SM</small></span><span class="go">Pokreni</span></button>${intro}${busy}${resLine}
-    <div class="top-head"><p class="count-line">${m ? `Odjel ${esc(cfg().group || '5')} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
+  box.innerHTML = `<button class="orders-bar au-master" type="button" data-au-master>${icon('chart')}<span><b>Master provjera</b><small>Sve SM i DM vrijednosti odjela: ukinuti sa SM/DM i zamjene, SM bez prodaje, najprodavaniji bez SM</small></span><span class="go">Pokreni</span></button>${intro}${deptChips('smdm')}${busy}${resLine}
+    <div class="top-head"><p class="count-line">${m ? `${esc(deptName())} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
       <button class="text-btn" type="button" data-sm="reload" ${dis}>${icon('refresh')}Osvježi</button></div>
     ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Ukloni SM i DM za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM ni DM. Sve je po smjernici.</p>' : ''}
     ${rows ? `<div class="sm-list">${rows}</div>` : ''}
@@ -1930,7 +1991,7 @@ function openAudit() {
   go('audit');
   renderAudit();
   const a = S.user.audit;
-  if (!a || !a.list || Date.now() - a.at > 30 * 60000) loadAudit();
+  if (!a || !a.list || a.dept !== deptSig() || !deptGroups() || Date.now() - a.at > 30 * 60000) loadAudit();
 }
 
 const auKeep = (x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: +x.stock || 0, sm: +x.sm || 0, dm: +x.dm || 0, cap: +x.cap || 0, sold30: +x.sold30 || 0,
@@ -1938,19 +1999,23 @@ const auKeep = (x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock
 
 function loadAudit() {
   if (S.au.busy) return;
-  const ok = stCall({ mode: 'audit', cat: cfg().group || '5' }, (r) => {
+  S.au.busy = 'load';
+  renderAudit();
+  withDept(() => loadAudit2());
+}
+
+function loadAudit2() {
+  const ok = stCall({ mode: 'audit', cat: cfg().group || '5', ...deptArg() }, (r) => {
     S.au.busy = '';
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.audit = { at: Date.now(), list: r.res.list.slice(0, 800).map(auKeep), top: (r.res.top || []).slice(0, 40).map(auKeep) };
+      S.user.audit = { dept: deptSig(), at: Date.now(), list: r.res.list.slice(0, 800).map(auKeep), top: (r.res.top || []).slice(0, 40).map(auKeep) };
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'Provjera se nije mogla učitati. Pokušaj ponovo.');
     }
     if (top().id === 'audit') renderAudit();
   });
-  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
-  S.au.busy = 'load';
-  renderAudit();
+  if (!ok) { S.au.busy = ''; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderAudit(); }
 }
 
 function auGroups() {
@@ -1999,14 +2064,27 @@ function auSend(items) {
   const ok = stCall({ mode: 'smset', items }, (r) => {
     S.au.busy = '';
     if (r.how === 'ok' && r.res) {
-      for (const n of r.res.done || []) { delete S.au.edit[n]; delete S.au.move[n]; }
-      S.au.result = { done: (r.res.done || []).length, failed: r.res.failed || [] };
+      const done = new Set(r.res.done || []);
+      const want = new Map(items.map((x) => [x.num, x]));
+      const a = S.user.audit;
+      if (a) {
+        const upd = (x) => {
+          let y = done.has(x.num) ? { ...x, sm: want.get(x.num).sm, dm: want.get(x.num).dm } : x;
+          if (y.succ && done.has(y.succ.num)) y = { ...y, succ: { ...y.succ, sm: want.get(y.succ.num).sm, dm: want.get(y.succ.num).dm } };
+          return y;
+        };
+        a.list = a.list.map(upd).filter((x) => x.sm > 0 || x.dm > 0);
+        a.top = (a.top || []).map(upd);
+        saveUser();
+      }
+      for (const n of done) { delete S.au.edit[n]; delete S.au.move[n]; }
+      S.au.result = { done: done.size, failed: r.res.failed || [] };
     } else {
       S.au.result = { done: 0, failed: [], err: r.how === 'login' ? 'StoreFront traži prijavu. Učitaj provjeru ponovo da vidiš šta je promijenjeno.' : 'StoreFront nije odgovorio do kraja. Učitaj provjeru ponovo.' };
     }
     S.user.smdm = null; // the SM screen reads again
     renderSmBar();
-    loadAudit(); // read back what StoreFront now has
+    if (top().id === 'audit') renderAudit();
   });
   if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
   S.au.busy = 'send';
@@ -2017,15 +2095,15 @@ function renderAudit() {
   const box = $('#auditBody');
   if (!box) return;
   const a = S.user.audit;
-  const busy = S.au.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Provjeravam sve SM i DM vrijednosti odjela u StoreFrontu… (do jedne minute)</p>'
+  const busy = S.deptBusy ? '<p class="count-line"><i class="mj-busy"></i> Prvi put: tražim u StoreFrontu grupe proizvoda tvog odjela (iz planograma)…</p>' : S.au.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Provjeravam sve SM i DM vrijednosti odjela u StoreFrontu… (do jedne minute)</p>'
     : S.au.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
   const res = S.au.result;
   const resLine = res ? (res.err ? `<p class="ar-err">${esc(res.err)}</p>`
     : `<p class="sm-ok">Spremljeno u StoreFront: ${res.done} ${plural(res.done, 'artikal', 'artikla', 'artikala')}.${res.failed.length ? ` Nije prošlo: ${res.failed.map((f) => esc(f.num)).join(', ')}.` : ''}</p>`) : '';
-  const head = `<div class="top-head"><p class="count-line">${a ? `Odjel ${esc(cfg().group || '5')} · ${a.list.length} ${plural(a.list.length, 'artikal', 'artikla', 'artikala')} sa SM ili DM · ${esc(ageText(a.at))}` : ''}</p>
+  const head = `<div class="top-head"><p class="count-line">${a ? `${esc(deptName())} · ${a.list.length} ${plural(a.list.length, 'artikal', 'artikla', 'artikala')} sa SM ili DM · ${esc(ageText(a.at))}` : ''}</p>
     <button class="text-btn" type="button" data-au="reload" ${S.au.busy ? 'disabled' : ''}>${icon('refresh')}Provjeri ponovo</button></div>`;
   const g = auGroups();
-  if (!g) { box.innerHTML = `${busy}${resLine}${head}`; return; }
+  if (!g) { box.innerHTML = `${busy}${resLine}${head}${deptChips('audit')}`; return; }
   const n = smcheck.total(g);
   const sum = n ? `<div class="au-sum">${smcheck.GROUPS.filter((x) => g[x.id].length).map((x) => `<button class="au-chip${x.fix ? ' is-fix' : ''}" type="button" data-au-go="${x.id}"><b>${g[x.id].length}</b>${esc(x.title)}</button>`).join('')}</div>`
     : '<div class="mj-intro"><h3>Sve je u redu ✓</h3><p>Nema ukinutih artikala sa SM/DM, ni drugih sumnjivih vrijednosti u odjelu.</p></div>';
@@ -2038,7 +2116,7 @@ function renderAudit() {
     </section>`;
   }).join('');
   const items = auItems();
-  box.innerHTML = `${busy}${resLine}${head}${sum}${groups}
+  box.innerHTML = `${busy}${resLine}${head}${deptChips('audit')}${sum}${groups}
     ${items.length ? `<div class="sm-save"><button class="btn btn-primary btn-block" type="button" data-au="save" ${S.au.busy ? 'disabled' : ''}>Spremi promjene (${items.length})</button></div>` : ''}`;
 }
 
@@ -3834,7 +3912,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3865,6 +3943,14 @@ function bind() {
     if (t.dataset.top === 'refresh') { loadTop(); return; }
     if (t.dataset.sm || t.dataset.smZero || t.dataset.smMove) { onSmClick(t); return; }
     if (t.hasAttribute('data-au-master')) { openAudit(); return; }
+    if (t.dataset.grp) {
+      const off = { ...(cfg().grpOff || {}) };
+      if (off[t.dataset.grp]) delete off[t.dataset.grp]; else off[t.dataset.grp] = true;
+      setCfg({ grpOff: off });
+      const sc = t.dataset.grpScreen;
+      if (sc === 'top') loadTop(); else if (sc === 'audit') loadAudit(); else loadSm();
+      return;
+    }
     if (t.dataset.au || t.dataset.auOpen || t.dataset.auGo || t.dataset.auZero || t.dataset.auMove) { onAuClick(t); return; }
     if (t.dataset.stockRetry) { stockLoad(t.dataset.stockRetry, true); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }

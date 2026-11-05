@@ -30,6 +30,12 @@
     });
   }
   var get = function (u) { return req('GET', u); };
+  // the articles of the employee's own planogram (department): everything else is left out
+  var only = Array.isArray(arg.only) && arg.only.length ? {} : null;
+  if (only) arg.only.slice(0, 6000).forEach(function (n) { if (/^\d{7}$/.test(String(n))) only[String(n)] = 1; });
+  function mine(x) { return !only || !!only[x.num]; }
+  // the product groups to look in: the department's own groups when the app knows them, else the whole group
+  var cats = (Array.isArray(arg.cats) ? arg.cats : []).map(function (c) { return s(c, 8); }).filter(function (c) { return /^\d{1,8}$/.test(c); }).slice(0, 80);
   var store = '', catalog = '';
   function who() {
     return get('/api/v1/websapapi/user-details').then(function (u) {
@@ -122,8 +128,8 @@
     var cat = s(arg.cat, 10);
     if (!/^[0-9A-Za-z]{1,10}$/.test(cat)) throw 'bad cat';
     var deep = Math.max(0, Math.min(60, +arg.deep || 40));
-    return search({ categories: [cat], statusCodes: ALL, orderBy: 'quantitySoldInPeriod', orderByDirection: 'DESC' }, 80).then(function (r) {
-      var list = r.list.filter(function (a) { return a.sold30 > 0; });
+    return search({ categories: cats.length ? cats : [cat], statusCodes: ALL, orderBy: 'quantitySoldInPeriod', orderByDirection: 'DESC' }, only ? 300 : 80).then(function (r) {
+      var list = r.list.filter(function (a) { return a.sold30 > 0 && mine(a); }).slice(0, 80);
       // the last 7 days: from the stock history of the first ones
       return inBatches(list.slice(0, deep), 6, function (a) { return history(a.num).then(function (h) { a.sold7 = soldSince(h, 7); }); }).then(function () {
         return { list: list, total: r.total };
@@ -139,7 +145,7 @@
     function all(field) {
       var out = [];
       function page(start) {
-        var b = { storeId: store, catalogId: catalog, categories: [cat], statusCodes: st, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
+        var b = { storeId: store, catalogId: catalog, categories: cats.length ? cats : [cat], statusCodes: st, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
         return req('POST', '/api/v1/article/search?include=SmDm', b).then(function (j) {
           var l = ((j && j.articleResults) || []).map(row);
           out = out.concat(l);
@@ -150,10 +156,11 @@
       }
       return page(0);
     }
-    return all('SM').then(function (a) {
-      return all('DM').then(function (b) {
+    return Promise.all([all('SM'), all('DM')]).then(function (ab) {
+      var a = ab[0], b = ab[1];
+      {
         var seen = {};
-        var list = a.concat(b).filter(function (x) { if (seen[x.num]) return false; seen[x.num] = 1; return true; });
+        var list = a.concat(b).filter(function (x) { if (seen[x.num] || !mine(x)) return false; seen[x.num] = 1; return true; });
         // the article's replacement number (substitution chain) that is still sold: its SM/DM may have to take over
         return inBatches(list, 6, function (x) {
           return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {
@@ -167,7 +174,7 @@
             x.succ = { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), sm: num(d.smQuantity), dm: num(d.dmQuantity), stock: num(d.stock) };
           });
         }).then(function () { return { list: list, total: list.length }; });
-      });
+      }
     });
   }
 
@@ -179,7 +186,7 @@
     function all(field) {
       var out = [];
       function page(start) {
-        var b = { storeId: store, catalogId: catalog, categories: [cat], statusCodes: ALL, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
+        var b = { storeId: store, catalogId: catalog, categories: cats.length ? cats : [cat], statusCodes: ALL, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
         return req('POST', '/api/v1/article/search?include=SmDm', b).then(function (j) {
           var l = ((j && j.articleResults) || []).map(row);
           out = out.concat(l);
@@ -192,10 +199,11 @@
       return page(0);
     }
     var list = [], top = [];
-    return all('SM').then(function (a) {
-      return all('DM').then(function (b) {
+    return Promise.all([all('SM'), all('DM')]).then(function (ab) {
+      var a = ab[0], b = ab[1];
+      {
         var seen = {};
-        list = a.concat(b).filter(function (x) { if (seen[x.num]) return false; seen[x.num] = 1; return true; });
+        list = a.concat(b).filter(function (x) { if (seen[x.num] || !mine(x)) return false; seen[x.num] = 1; return true; });
         var out = list.filter(function (x) { return x.st === '21' || x.st === '81'; });
         return inBatches(out, 6, function (x) {
           return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {
@@ -209,12 +217,31 @@
             x.succ = { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), sm: num(d.smQuantity), dm: num(d.dmQuantity), stock: num(d.stock) };
           });
         });
+      }
+    }).then(function () {
+      return search({ categories: cats.length ? cats : [cat], statusCodes: ['01', '02', '11', '12', '31', '32', '41'], orderBy: 'quantitySoldInPeriod', orderByDirection: 'DESC' }, only ? 200 : 40);
+    }).then(function (r) {
+      top = r.list.filter(function (a) { return a.sold30 > 0 && mine(a); }).slice(0, 40);
+      return { list: list, top: top };
+    });
+  }
+
+  // the product groups (5 digits, e.g. 50101 Svijećnjaci) of the articles of the employee's planogram: his department
+  // in StoreFront's terms, so that old articles (21/81, no longer in the planogram) of those groups are found too
+  function groups() {
+    var nums = (Array.isArray(arg.nums) ? arg.nums : []).filter(function (n) { return /^\d{7}$/.test(String(n)); }).slice(0, 1500);
+    if (!nums.length) throw 'bad input';
+    var by = {};
+    return inBatches(nums, 8, function (n) {
+      return get('/api/v1/article/masterdata?article=' + n + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store)).then(function (j) {
+        var a = Array.isArray(j) ? j[0] : j;
+        var g = a && s(a.groupId, 8);
+        if (!g || !/^\d{3,8}$/.test(g)) return;
+        by[g] = by[g] || { id: g, title: s(a.groupTitle, 60), n: 0 };
+        by[g].n++;
       });
     }).then(function () {
-      return search({ categories: [cat], statusCodes: ['01', '02', '11', '12', '31', '32', '41'], orderBy: 'quantitySoldInPeriod', orderByDirection: 'DESC' }, 40);
-    }).then(function (r) {
-      top = r.list.filter(function (a) { return a.sold30 > 0; });
-      return { list: list, top: top };
+      return { groups: Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.n - a.n; }), asked: nums.length };
     });
   }
 
@@ -224,19 +251,14 @@
     });
     if (!items.length) throw 'bad input';
     var done = [], failed = [];
-    var i = 0;
-    function next() {
-      if (i >= items.length) return Promise.resolve({ done: done, failed: failed });
-      var x = items[i++];
-      window.__st.prog = i + '/' + items.length;
+    // four at a time: one by one, 50 articles took StoreFront minutes
+    return inBatches(items, 4, function (x) {
       return req('POST', '/api/v1/article-smdm-data/update', { storeId: store, articleId: String(x.num), module: 'SM_DM', smQuantity: Math.round(+x.sm), dmQuantity: Math.round(+x.dm) })
-        .then(function () { done.push(String(x.num)); }, function (e) { if (e === 'login') throw e; failed.push({ num: String(x.num), why: s(e, 100) }); })
-        .then(next);
-    }
-    return next();
+        .then(function () { done.push(String(x.num)); }, function (e) { if (e === 'login') throw e; failed.push({ num: String(x.num), why: s(e, 100) }); });
+    }).then(function () { return { done: done, failed: failed }; });
   }
 
-  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit }[arg.mode];
+  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {
