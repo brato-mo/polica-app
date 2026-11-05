@@ -154,7 +154,19 @@
       return all('DM').then(function (b) {
         var seen = {};
         var list = a.concat(b).filter(function (x) { if (seen[x.num]) return false; seen[x.num] = 1; return true; });
-        return { list: list, total: list.length };
+        // the article's replacement number (substitution chain) that is still sold: its SM/DM may have to take over
+        return inBatches(list, 6, function (x) {
+          return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {
+            var m = Array.isArray(j) ? j[0] : j;
+            var c = ((m && m.substitutionChain) || []).filter(function (e) {
+              var st = s(e.statusCode, 3);
+              return /^\d{7}$/.test(s(e.articleNumber, 10)) && s(e.articleNumber, 10) !== x.num && st !== '21' && st !== '81';
+            })[0];
+            if (!c) return;
+            var d = c.smDmData || {};
+            x.succ = { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), sm: num(d.smQuantity), dm: num(d.dmQuantity), stock: num(d.stock) };
+          });
+        }).then(function () { return { list: list, total: list.length }; });
       });
     });
   }

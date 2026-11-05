@@ -1258,3 +1258,6 @@ button.code-chip:active { transform: scale(.96); }
 .stk-open .ico { margin-right: 0; vertical-align: 0; }
 .sm-row { grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; }
 .sm-edit input { width: 52px; }
+.sm-succ { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13px; font-weight: 600; line-height: 1.4; }
+.sm-succ b { color: var(--ink); }
+.sm-move-on { color: var(--primary); font-weight: 700; }

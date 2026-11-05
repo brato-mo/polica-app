@@ -1765,7 +1765,14 @@ function renderTop() {
 
 // ------------------------------------------------ SM i DM: values of the department's articles that go out (21, 81)
 
-S.sm = { busy: '', edit: {}, st: ['21', '81'] };
+S.sm = { busy: '', edit: {}, move: {}, st: ['21', '81'] };
+
+/** What moving an old number's SM/DM to its replacement sends: the old one to 0, the new one at least as much. */
+function smMoveItems(x) {
+  return [{ num: x.num, sm: 0, dm: 0 }, { num: x.succ.num, sm: Math.max(x.succ.sm, x.sm), dm: Math.max(x.succ.dm, x.dm) }];
+}
+/** A replacement that would be left without the old number's SM/DM. */
+const smNeedsMove = (x) => !!x.succ && (x.succ.sm < x.sm || x.succ.dm < x.dm);
 
 function renderSmBar() {
   const b = $('#smBar');
@@ -1778,6 +1785,7 @@ function renderSmBar() {
 
 function openSm() {
   S.sm.edit = {};
+  S.sm.move = {};
   S.sm.result = null;
   go('smdm');
   renderSm();
@@ -1789,7 +1797,7 @@ function loadSm() {
   const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st }, (r) => {
     S.sm.busy = '';
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.smdm = { v: 2, at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30 })) };
+      S.user.smdm = { v: 2, at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30, succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null })) };
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'SM vrijednosti se nisu mogle učitati. Pokušaj ponovo.');
@@ -1814,7 +1822,7 @@ function smSend(items) {
         m.list = m.list.map((x) => (done.has(x.num) ? { ...x, sm: want.get(x.num).sm, dm: want.get(x.num).dm } : x)).filter((x) => x.sm > 0 || x.dm > 0);
         m.at = Date.now();
       }
-      for (const n of done) delete S.sm.edit[n];
+      for (const n of done) { delete S.sm.edit[n]; delete S.sm.move[n]; }
       S.sm.result = { done: done.size, failed: r.res.failed || [] };
       saveUser();
     } else {
@@ -1843,12 +1851,17 @@ function renderSm() {
     <p><b>SM</b> (Sales Machine): artikli izloženi dugoročno izvan planograma (Powerline, endframe i slično). SM ulazi u SAO prijedlog narudžbe, da ta ekspozicija bude puna.</p>
     <p><b>DM</b> (Display Model): koliko komada je izloženo. Izloženi komadi se skidaju sa online zalihe trgovine (na JYSK.ba piše „Pogledajte proizvod u prodavnici“).</p>
     <p>Smjernica „Smjernice za vrijednosti SM/DM“ (MYJYSK → Attractive Store): <b>kad artikal pređe na status 21 (ukinut), uklonite SM i DM vrijednosti</b>. Svaki dan: u StoreFrontu filtrirajte ukinute artikle sa SM/DM i uklonite vrijednosti starih artikala. Vrijednosti unesene prije 22:00 ulaze u prijedlog narudžbe sljedećeg dana. Isto važi i za 81 (označen za brisanje).</p></details>`;
-  const edits = Object.entries(S.sm.edit).filter(([n, e]) => { const x = list.find((y) => y.num === n); return x && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm); });
+  const edits = [...Object.entries(S.sm.edit).filter(([n, e]) => { const x = list.find((y) => y.num === n); return x && !S.sm.move[n] && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm); }), ...Object.keys(S.sm.move).filter((n) => list.some((y) => y.num === n && y.succ))];
   const dis = S.sm.busy ? 'disabled' : '';
   const rows = list.map((x) => {
-    const e = S.sm.edit[x.num] || {};
+    const mv = !!(S.sm.move[x.num] && x.succ);
+    const e = mv ? { sm: 0, dm: 0 } : S.sm.edit[x.num] || {};
     const v = e.sm ?? x.sm, w = e.dm ?? x.dm;
-    const changed = +v !== x.sm || +w !== x.dm;
+    const changed = mv || +v !== x.sm || +w !== x.dm;
+    const to = mv ? smMoveItems(x)[1] : null;
+    const succ = x.succ ? `<div class="sm-succ"><span>Zamjena: <b>${esc(x.succ.num)}</b> (status ${esc(x.succ.st)}${stText(x.succ.st) ? `, ${esc(stText(x.succ.st))}` : ''}) · SM ${whole(x.succ.sm)} · DM ${whole(x.succ.dm)} · na stanju ${whole(x.succ.stock)}</span>
+        ${mv ? `<span class="sm-move-on">Prebacuje se: zamjena dobija SM ${whole(to.sm)}, DM ${whole(to.dm)}; stari broj na 0</span>` : ''}
+        ${smNeedsMove(x) || mv ? `<button class="text-btn" type="button" data-sm-move="${esc(x.num)}" ${S.sm.busy ? 'disabled' : ''}>${mv ? 'Ne prebacuj' : 'Prebaci SM/DM na zamjenu'}</button>` : ''}</div>` : '';
     return `<div class="sm-row${changed ? ' is-changed' : ''}">
       <div class="sm-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span>
         <span class="pills">${stPill(x.st)}${S.index.byNum.has(x.num) ? '<span class="pill">U planogramu</span>' : ''}</span>
@@ -1856,6 +1869,7 @@ function renderSm() {
       <label class="sm-edit"><span>SM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(v)}" data-sm-in="${esc(x.num)}" data-k="sm" ${dis}></label>
       <label class="sm-edit"><span>DM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(w)}" data-sm-in="${esc(x.num)}" data-k="dm" ${dis}></label>
       <button class="chip" type="button" data-sm-zero="${esc(x.num)}" ${dis} aria-label="SM i DM na 0">0</button>
+      ${succ}
     </div>`;
   }).join('');
   box.innerHTML = `${intro}${busy}${resLine}
@@ -1867,17 +1881,38 @@ function renderSm() {
 }
 
 async function onSmClick(t) {
-  if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = { sm: 0, dm: 0 }; S.sm.result = null; renderSm(); return; }
+  if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = { sm: 0, dm: 0 }; delete S.sm.move[t.dataset.smZero]; S.sm.result = null; renderSm(); return; }
+  if (t.dataset.smMove) { const n = t.dataset.smMove; if (S.sm.move[n]) delete S.sm.move[n]; else { S.sm.move[n] = true; delete S.sm.edit[n]; } S.sm.result = null; renderSm(); return; }
   const a = t.dataset.sm;
   const list = (S.user.smdm && S.user.smdm.list) || [];
   if (a === 'reload') { S.sm.result = null; loadSm(); return; }
   let items = [];
-  if (a === 'all0') items = list.map((x) => ({ num: x.num, sm: 0, dm: 0 }));
-  if (a === 'save') items = list.filter((x) => { const e = S.sm.edit[x.num]; return e && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm); }).map((x) => ({ num: x.num, sm: S.sm.edit[x.num].sm ?? x.sm, dm: S.sm.edit[x.num].dm ?? x.dm }));
+  let moves = 0;
+  if (a === 'all0') {
+    const need = list.filter(smNeedsMove);
+    let how = 'zero';
+    if (need.length) {
+      how = await ask(`${need.length} ${plural(need.length, 'artikal ima', 'artikla imaju', 'artikala ima')} zamjenu bez SM/DM`,
+        `<p>Stari broj (21/81) ima SM ili DM, a njegov novi broj (zamjena, npr. status 11 ili 12) nema. Ako samo ukloniš sa starog, ekspozicija novog broja se više neće dopunjavati.</p><p>Prebacivanje: novi broj dobija SM/DM starog (ako već ima više, ostaje njegov), stari ide na 0.</p>`,
+        [{ label: `Prebaci na zamjene (${need.length}) i ukloni sa starih`, kind: 'btn-primary', value: 'move' }, { label: 'Samo ukloni sa starih', value: 'zero' }, { label: 'Odustani', value: '' }]);
+      if (!how) return;
+    }
+    for (const x of list) {
+      if (how === 'move' && smNeedsMove(x)) { items.push(...smMoveItems(x)); moves++; } else items.push({ num: x.num, sm: 0, dm: 0 });
+    }
+  }
+  if (a === 'save') {
+    for (const x of list) {
+      if (S.sm.move[x.num] && x.succ) { items.push(...smMoveItems(x)); moves++; continue; }
+      const e = S.sm.edit[x.num];
+      if (e && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm)) items.push({ num: x.num, sm: e.sm ?? x.sm, dm: e.dm ?? x.dm });
+    }
+  }
   if (!items.length) return;
+  const olds = items.length - moves;
   const zero = items.filter((x) => x.sm === 0 && x.dm === 0).length;
-  const go2 = await ask(`Promijeniti SM/DM za ${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')}?`,
-    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` ${zero === items.length ? 'Svima' : `Za ${zero}`} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}</p>`,
+  const go2 = a === 'all0' && list.some(smNeedsMove) ? true : await ask(`Promijeniti SM/DM za ${olds} ${plural(olds, 'artikal', 'artikla', 'artikala')}?`,
+    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` Za ${zero} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}${moves ? ` ${moves} ${plural(moves, 'zamjena dobija', 'zamjene dobijaju', 'zamjena dobija')} SM/DM starog broja.` : ''}</p>`,
     [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
   if (go2) smSend(items);
 }
@@ -3637,7 +3672,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3666,7 +3701,7 @@ function bind() {
     if (t.id === 'smBar') { openSm(); return; }
     if (t.dataset.topDays) { S.topDays = +t.dataset.topDays; renderTop(); return; }
     if (t.dataset.top === 'refresh') { loadTop(); return; }
-    if (t.dataset.sm || t.dataset.smZero) { onSmClick(t); return; }
+    if (t.dataset.sm || t.dataset.smZero || t.dataset.smMove) { onSmClick(t); return; }
     if (t.dataset.stockRetry) { stockLoad(t.dataset.stockRetry, true); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
