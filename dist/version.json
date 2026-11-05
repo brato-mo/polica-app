@@ -1,7 +1,7 @@
 {
- "code": 44,
- "name": "1.43",
- "notes": "Artikal koji je samo na listi pokazuje se na crtežu: označena je njegova polica (modul, polica, notch); lista samo kad crteža nema",
+ "code": 45,
+ "name": "1.44",
+ "notes": "Ispravka: artikal se traži u pravom odjelu (0501 ne miješa s 0502), označava se samo traženi artikal, nikad cijela polica",
  "size": 1954316,
- "sha256": "3d36e150d07a055a5e73492ab7f3365be59e1a68201dcbf15fe836d7a4dbaed8"
+ "sha256": "d36199c1c16e1f87a40c1c4278466d1f850499b90cf156c6e0624a1003faee6b"
 }
