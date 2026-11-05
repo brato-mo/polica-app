@@ -1773,7 +1773,7 @@ function renderSmBar() {
   b.hidden = !S.plans.length || !A.storeTask;
   if (b.hidden) return;
   const m = S.user.smdm;
-  b.innerHTML = `${icon('list')}<span><b>SM vrijednosti za status 21 i 81</b><small>${m && m.list ? `${m.list.length} ${plural(m.list.length, 'artikal', 'artikla', 'artikala')} još ima SM iznad 0 · ${esc(ageText(m.at))}` : 'Da ne stižu artikli koji idu na rasprodaju'}</small></span><span class="go">${m && m.list ? 'Otvori' : 'Učitaj'}</span>`;
+  b.innerHTML = `${icon('list')}<span><b>SM i DM za status 21 i 81</b><small>${m && m.list ? `${m.list.length} ${plural(m.list.length, 'artikal', 'artikla', 'artikala')} još ima SM ili DM · ${esc(ageText(m.at))}` : 'Smjernica: kad je artikal ukinut, ukloni SM i DM'}</small></span><span class="go">${m && m.list ? 'Otvori' : 'Učitaj'}</span>`;
 }
 
 function openSm() {
@@ -1789,7 +1789,7 @@ function loadSm() {
   const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st }, (r) => {
     S.sm.busy = '';
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.smdm = { at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30 })) };
+      S.user.smdm = { v: 2, at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30 })) };
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'SM vrijednosti se nisu mogle učitati. Pokušaj ponovo.');
@@ -1811,7 +1811,7 @@ function smSend(items) {
     if (r.how === 'ok' && r.res) {
       const done = new Set(r.res.done || []);
       if (m && m.list) {
-        m.list = m.list.map((x) => (done.has(x.num) ? { ...x, sm: want.get(x.num).sm } : x)).filter((x) => x.sm > 0);
+        m.list = m.list.map((x) => (done.has(x.num) ? { ...x, sm: want.get(x.num).sm, dm: want.get(x.num).dm } : x)).filter((x) => x.sm > 0 || x.dm > 0);
         m.at = Date.now();
       }
       for (const n of done) delete S.sm.edit[n];
@@ -1839,43 +1839,45 @@ function renderSm() {
   const res = S.sm.result;
   const resLine = res ? (res.err ? `<p class="ar-err">${esc(res.err)}</p>`
     : `<p class="sm-ok">Spremljeno u StoreFront: ${res.done} ${plural(res.done, 'artikal', 'artikla', 'artikala')}.${res.failed.length ? ` Nije prošlo: ${res.failed.map((f) => esc(f.num)).join(', ')}.` : ''}</p>`) : '';
-  const intro = `<details class="sm-intro"><summary>Šta su SM i DM?</summary>
-    <p><b>SM</b> je količina koju sistem želi da trgovina uvijek ima od tog artikla. Kad zaliha padne ispod SM, automatsko naručivanje šalje robu iz skladišta dok se ne dopuni.</p>
-    <p><b>DM</b> je količina za izlaganje (izložbeni komadi), koja se drži na prodajnom mjestu.</p>
-    <p>Artikal sa <b>statusom 21</b> (ukinut, ide na rasprodaju) ili <b>81</b> (označen za brisanje) a sa SM iznad 0 i dalje se može dopunjavati. Kad mu SM staviš na 0, sistem ga više ne šalje za dopunu, a ono što imaš rasprodaš. DM se ne mijenja.</p></details>`;
-  const edits = Object.entries(S.sm.edit).filter(([n, v]) => { const x = list.find((y) => y.num === n); return x && +v !== x.sm; });
+  const intro = `<details class="sm-intro"><summary>Šta su SM i DM i šta kaže smjernica?</summary>
+    <p><b>SM</b> (Sales Machine): artikli izloženi dugoročno izvan planograma (Powerline, endframe i slično). SM ulazi u SAO prijedlog narudžbe, da ta ekspozicija bude puna.</p>
+    <p><b>DM</b> (Display Model): koliko komada je izloženo. Izloženi komadi se skidaju sa online zalihe trgovine (na JYSK.ba piše „Pogledajte proizvod u prodavnici“).</p>
+    <p>Smjernica „Smjernice za vrijednosti SM/DM“ (MYJYSK → Attractive Store): <b>kad artikal pređe na status 21 (ukinut), uklonite SM i DM vrijednosti</b>. Svaki dan: u StoreFrontu filtrirajte ukinute artikle sa SM/DM i uklonite vrijednosti starih artikala. Vrijednosti unesene prije 22:00 ulaze u prijedlog narudžbe sljedećeg dana. Isto važi i za 81 (označen za brisanje).</p></details>`;
+  const edits = Object.entries(S.sm.edit).filter(([n, e]) => { const x = list.find((y) => y.num === n); return x && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm); });
   const dis = S.sm.busy ? 'disabled' : '';
   const rows = list.map((x) => {
-    const v = S.sm.edit[x.num] ?? x.sm;
-    const changed = +v !== x.sm;
+    const e = S.sm.edit[x.num] || {};
+    const v = e.sm ?? x.sm, w = e.dm ?? x.dm;
+    const changed = +v !== x.sm || +w !== x.dm;
     return `<div class="sm-row${changed ? ' is-changed' : ''}">
       <div class="sm-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span>
         <span class="pills">${stPill(x.st)}${S.index.byNum.has(x.num) ? '<span class="pill">U planogramu</span>' : ''}</span>
-        <span class="sm-facts">Na stanju ${whole(x.stock)} · prodano 30 dana ${whole(x.sold30)}${x.dm ? ` · DM ${whole(x.dm)}` : ''}</span></div>
-      <label class="sm-edit"><span>SM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(v)}" data-sm-in="${esc(x.num)}" ${dis}></label>
-      <button class="chip" type="button" data-sm-zero="${esc(x.num)}" ${dis} aria-label="SM na 0">0</button>
+        <span class="sm-facts">Na stanju ${whole(x.stock)} · prodano 30 dana ${whole(x.sold30)}</span></div>
+      <label class="sm-edit"><span>SM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(v)}" data-sm-in="${esc(x.num)}" data-k="sm" ${dis}></label>
+      <label class="sm-edit"><span>DM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(w)}" data-sm-in="${esc(x.num)}" data-k="dm" ${dis}></label>
+      <button class="chip" type="button" data-sm-zero="${esc(x.num)}" ${dis} aria-label="SM i DM na 0">0</button>
     </div>`;
   }).join('');
   box.innerHTML = `${intro}${busy}${resLine}
-    <div class="top-head"><p class="count-line">${m ? `Odjel ${esc(cfg().group || '5')} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM iznad 0 · ${esc(ageText(m.at))}` : ''}</p>
+    <div class="top-head"><p class="count-line">${m ? `Odjel ${esc(cfg().group || '5')} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
       <button class="text-btn" type="button" data-sm="reload" ${dis}>${icon('refresh')}Osvježi</button></div>
-    ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Stavi SM na 0 za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM iznad 0. Sve je čisto.</p>' : ''}
+    ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Ukloni SM i DM za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM ni DM. Sve je po smjernici.</p>' : ''}
     ${rows ? `<div class="sm-list">${rows}</div>` : ''}
     ${edits.length ? `<div class="sm-save"><button class="btn btn-primary btn-block" type="button" data-sm="save" ${dis}>Spremi promjene (${edits.length})</button></div>` : ''}`;
 }
 
 async function onSmClick(t) {
-  if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = 0; S.sm.result = null; renderSm(); return; }
+  if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = { sm: 0, dm: 0 }; S.sm.result = null; renderSm(); return; }
   const a = t.dataset.sm;
   const list = (S.user.smdm && S.user.smdm.list) || [];
   if (a === 'reload') { S.sm.result = null; loadSm(); return; }
   let items = [];
-  if (a === 'all0') items = list.map((x) => ({ num: x.num, sm: 0, dm: x.dm }));
-  if (a === 'save') items = list.filter((x) => S.sm.edit[x.num] != null && +S.sm.edit[x.num] !== x.sm).map((x) => ({ num: x.num, sm: Math.max(0, Math.round(+S.sm.edit[x.num] || 0)), dm: x.dm }));
+  if (a === 'all0') items = list.map((x) => ({ num: x.num, sm: 0, dm: 0 }));
+  if (a === 'save') items = list.filter((x) => { const e = S.sm.edit[x.num]; return e && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm); }).map((x) => ({ num: x.num, sm: S.sm.edit[x.num].sm ?? x.sm, dm: S.sm.edit[x.num].dm ?? x.dm }));
   if (!items.length) return;
-  const zero = items.filter((x) => x.sm === 0).length;
-  const go2 = await ask(`Promijeniti SM za ${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')}?`,
-    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` ${zero === items.length ? 'Svima' : `Za ${zero}`} SM ide na 0, pa ih automatsko naručivanje više ne dopunjava.` : ''} DM ostaje isti.</p>`,
+  const zero = items.filter((x) => x.sm === 0 && x.dm === 0).length;
+  const go2 = await ask(`Promijeniti SM/DM za ${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')}?`,
+    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` ${zero === items.length ? 'Svima' : `Za ${zero}`} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}</p>`,
     [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
   if (go2) smSend(items);
 }
@@ -3616,7 +3618,7 @@ function bind() {
   $('#smBody').addEventListener('change', (ev) => {
     const n = ev.target.dataset.smIn;
     if (!n) return;
-    S.sm.edit[n] = Math.max(0, Math.min(9999, Math.round(+ev.target.value || 0)));
+    S.sm.edit[n] = { ...(S.sm.edit[n] || {}), [ev.target.dataset.k === 'dm' ? 'dm' : 'sm']: Math.max(0, Math.min(9999, Math.round(+ev.target.value || 0))) };
     S.sm.result = null;
     renderSm();
   });

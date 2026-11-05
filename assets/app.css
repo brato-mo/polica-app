@@ -1256,3 +1256,5 @@ button.code-chip:active { transform: scale(.96); }
 .sm-main .pill, .stk-facts .pill, .store-line + .pills .pill { white-space: normal; text-align: left; }
 .stk-open { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .stk-open .ico { margin-right: 0; vertical-align: 0; }
+.sm-row { grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; }
+.sm-edit input { width: 52px; }

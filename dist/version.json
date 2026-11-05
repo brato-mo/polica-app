@@ -1,7 +1,7 @@
 {
- "code": 51,
- "name": "1.50",
- "notes": "Zaliha i povijest zalihe na artiklu; skeniranje nalazi i status 21/81; Najprodavanije (7 i 30 dana); SM vrijednosti za status 21/81 (pojedinačno ili sve na 0); narudžbe se više ne učitavaju same i ne blokiraju tastaturu; nema više lažnog traženja lozinke",
+ "code": 52,
+ "name": "1.51",
+ "notes": "SM i DM po smjernici: za status 21/81 uklanjaju se i SM i DM, lista pokazuje i artikle sa samo DM, tačno objašnjenje šta su SM i DM",
  "size": 1983180,
- "sha256": "960a302d4098b8ab92d2038a553f9e09b2cded269e0056ae3b3ea8fdbf5c2ae6"
+ "sha256": "89cd87dcb1336003d69d73982821c0d39b9e431fd237b9bb72f6cb4f6988d62d"
 }

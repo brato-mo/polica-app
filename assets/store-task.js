@@ -131,22 +131,32 @@
     });
   }
 
+  // articles of the department with these status codes that still have an SM or a DM value (two searches, merged)
   function smdm() {
     var cat = s(arg.cat, 10);
     var st = (Array.isArray(arg.st) ? arg.st : ['21', '81']).map(function (x) { return s(x, 3); }).filter(function (x) { return /^\d{2}$/.test(x); });
     if (!/^[0-9A-Za-z]{1,10}$/.test(cat) || !st.length) throw 'bad input';
-    var out = [];
-    function page(start) {
-      var b = { storeId: store, catalogId: catalog, categories: [cat], statusCodes: st, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: 'SM' }], start: String(start), max: '100' };
-      return req('POST', '/api/v1/article/search?include=SmDm', b).then(function (j) {
-        var l = ((j && j.articleResults) || []).map(row);
-        out = out.concat(l);
-        var total = j && j.pagingInfo ? num(j.pagingInfo.total) : 0;
-        if (l.length && out.length < total && out.length < 500) return page(start + l.length);
-        return { list: out, total: total };
-      });
+    function all(field) {
+      var out = [];
+      function page(start) {
+        var b = { storeId: store, catalogId: catalog, categories: [cat], statusCodes: st, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
+        return req('POST', '/api/v1/article/search?include=SmDm', b).then(function (j) {
+          var l = ((j && j.articleResults) || []).map(row);
+          out = out.concat(l);
+          var total = j && j.pagingInfo ? num(j.pagingInfo.total) : 0;
+          if (l.length && out.length < total && out.length < 500) return page(start + l.length);
+          return out;
+        });
+      }
+      return page(0);
     }
-    return page(0);
+    return all('SM').then(function (a) {
+      return all('DM').then(function (b) {
+        var seen = {};
+        var list = a.concat(b).filter(function (x) { if (seen[x.num]) return false; seen[x.num] = 1; return true; });
+        return { list: list, total: list.length };
+      });
+    });
   }
 
   function smset() {
