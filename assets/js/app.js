@@ -94,6 +94,7 @@ function rebuildIndex() {
 function dropFiles(id) {
   A.removePdf(`${id}.pdf`);
   A.removeThumbs(id);
+  pageCache.drop(id);
   store.remove(`plan-${id}.json`);
   docs.forget(id);
 }
@@ -2391,6 +2392,7 @@ async function drainImports() {
   renderHome();
   if (top().id === 'plans') renderPlans();
   showResults(results);
+  pageCache.start(); // the new planograms' pages
 }
 
 async function importList(list, forced, results) {
@@ -2690,6 +2692,154 @@ function renderChanges(id) {
 
 // ------------------------------------------------------------------- viewer
 
+// ------------------------------------------- pictures of whole planogram pages
+//
+// Drawing a planogram page from its PDF takes a second or more on a phone. Every page is drawn once, kept as a
+// picture next to the article pictures (thumbs/<id>-p/) and shown from there afterwards; pages not kept yet are
+// drawn quietly in the background while the app is open and nothing else is being read.
+const pageCache = (() => {
+  const FILE = 'pagecache.json';
+  let man = null; // plan id -> { tag, have: { pageIndex: 'webp' | 'jpg' } }
+  let full = false; // the phone refused to keep more
+  let running = false;
+  let hold = 0; // the viewer is drawing a page from the PDF
+  const near = []; // [id, page] pages next to the one on screen: drawn first
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const get = () => man || (man = store.read(FILE, {}) || {});
+  const save = debounce(() => store.write(FILE, get()), 1000);
+  const dir = (id) => `${id}-p`;
+  const dpr = () => Math.min(window.devicePixelRatio || 1, 3);
+  /** Width the page is drawn at, in CSS px: sharp enough for a first zoom, the same for every page on this phone. */
+  const cssW = () => Math.min(Math.min(screen.width || 400, screen.height || 400) * 2.2, 3600 / dpr());
+  const tagOf = (p) => `${Number(p.imported || 0).toString(36)}-${Math.round(cssW() * dpr())}`;
+
+  function entry(p) {
+    const m = get();
+    const tag = tagOf(p);
+    if (!m[p.id] || m[p.id].tag !== tag) {
+      if (m[p.id]) A.removeThumbs(dir(p.id)); // drawn for another screen size: draw again
+      m[p.id] = { tag, have: {} };
+    }
+    return m[p.id];
+  }
+  const plan = (id) => S.plans.find((x) => x.id === id);
+  const has = (id, i) => { const p = plan(id); return !!p && !!entry(p).have[i]; };
+  const url = (id, i) => { const p = plan(id); const e = entry(p); return `/files/thumbs/${dir(id)}/pg${i}-${e.tag}.${e.have[i]}`; };
+
+  /** The kept picture of a page, decoded, or null. */
+  async function load(id, i) {
+    if (!has(id, i)) return null;
+    const img = new Image();
+    img.src = url(id, i);
+    try {
+      await img.decode();
+      return img;
+    } catch (e) {
+      const p = plan(id);
+      if (p) { delete entry(p).have[i]; save(); } // gone from the phone: drawn again
+      return null;
+    }
+  }
+
+  const toBlob = (c, type, q) => new Promise((r) => c.toBlob(r, type, q));
+
+  /** Keeps a page drawn at cssW() (the viewer's base canvas or a background one). */
+  async function keep(id, i, canvas) {
+    const p = plan(id);
+    if (!p || full || entry(p).have[i]) return;
+    try {
+      let blob = await toBlob(canvas, 'image/webp', 0.8);
+      let ext = 'webp';
+      if (!blob || blob.type !== 'image/webp') { blob = await toBlob(canvas, 'image/jpeg', 0.85); ext = 'jpg'; }
+      if (!blob) return;
+      const e = entry(p);
+      const b64 = await blobToBase64(blob);
+      if (!plan(id) || entry(p) !== e) return; // deleted or replaced meanwhile
+      if (!A.writeThumb(dir(id), `pg${i}-${e.tag}.${ext}`, b64)) { full = true; return; }
+      e.have[i] = ext;
+      save();
+    } catch (err) {
+      console.warn('pageCache', err);
+    }
+  }
+
+  async function draw(id, i) {
+    const p = plan(id);
+    const pg = p && p.plan.pages[i];
+    if (!pg) return;
+    const doc = await docs.openPlan(id);
+    const c = document.createElement('canvas');
+    const w = cssW();
+    await docs.renderRegion(doc, i + 1, [0, 0, pg.w, pg.h], c, w, (w * pg.h) / pg.w);
+    await keep(id, i, c);
+    c.width = 1;
+    c.height = 1;
+  }
+
+  /** What to draw next: pages next to the one on screen, then (only away from articles and the viewer) all others. */
+  function next() {
+    while (near.length) {
+      const [id, i] = near.shift();
+      const p = plan(id);
+      if (p && i >= 0 && i < p.plan.pages.length && !entry(p).have[i]) return [id, i];
+    }
+    const t = top().id;
+    if (t === 'item' || t === 'viewer') return null; // they read the PDFs themselves; not taken from them
+    for (const p of S.plans) {
+      const e = entry(p);
+      for (let i = 0; i < p.plan.pages.length; i++) if (!e.have[i]) return [p.id, i];
+    }
+    return null;
+  }
+
+  async function loop() {
+    if (running) return;
+    running = true;
+    try {
+      for (let idle = 0; idle < 40 && !full; ) {
+        if (S.busy || hold || document.hidden) { await sleep(1500); continue; }
+        const job = next();
+        if (!job) {
+          if (top().id !== 'item' && top().id !== 'viewer') break; // all done
+          idle++;
+          await sleep(1500); // waiting for the employee to leave the article or the viewer
+          continue;
+        }
+        idle = 0;
+        try {
+          await draw(job[0], job[1]);
+        } catch (e) {
+          // the PDF was closed by another screen or the page cannot be drawn: tried again next time
+          await sleep(1000);
+        }
+        await sleep(near.length ? 30 : 250);
+      }
+    } finally {
+      running = false;
+    }
+  }
+
+  return {
+    cssW, has, load, keep,
+    start() { if (!full) setTimeout(loop, 0); },
+    /** The viewer shows page i: the pages before and after it are drawn first. */
+    around(id, i) {
+      near.length = 0;
+      near.push([id, i + 1], [id, i - 1], [id, i + 2]);
+      if (!full) loop();
+    },
+    holdOn() { hold++; },
+    holdOff() { hold = Math.max(0, hold - 1); },
+    drop(id) {
+      const m = get();
+      if (m[id]) { delete m[id]; save(); }
+      A.removeThumbs(dir(id));
+    },
+    /** Warms the browser's picture cache, so the next page appears at once. */
+    warm(id, i) { if (has(id, i)) { const img = new Image(); img.src = url(id, i); } },
+  };
+})();
+
 const viewer = (() => {
   const st = { id: null, plan: null, page: 0, focus: null, z: 1, x: 0, y: 0, fitZ: 1, renderTask: null, detailTask: null, token: 0, pointers: new Map(), gesture: null, lastTap: 0 };
   const stage = () => $('#stage');
@@ -2755,27 +2905,54 @@ const viewer = (() => {
     m.innerHTML = f ? `<rect class="mk-glow" x="${f[0] - 3}" y="${f[1] - 3}" width="${f[2] - f[0] + 6}" height="${f[3] - f[1] + 6}" rx="4"/><rect class="mk-in" x="${f[0] - 3}" y="${f[1] - 3}" width="${f[2] - f[0] + 6}" height="${f[3] - f[1] + 6}" rx="4"/>` : '';
     fit();
     if (f) focusOn(f);
+    const id = st.id, page = st.page;
+    if (st.renderTask) st.renderTask.cancel();
+    // a page drawn before: its kept picture, at once
+    const img = pageCache.has(id, page) ? await pageCache.load(id, page) : null;
+    if (token !== st.token) return;
+    if (img) {
+      b.width = img.naturalWidth;
+      b.height = img.naturalHeight;
+      const ctx = b.getContext('2d', { alpha: false });
+      ctx.drawImage(img, 0, 0);
+      b.style.width = pg.w + 'px';
+      b.style.height = pg.h + 'px';
+      $('#stageMsg').hidden = true;
+      scheduleDetail();
+      afterPage(id, page);
+      return;
+    }
     $('#stageMsg').hidden = false;
     $('#stageMsg').textContent = 'Crtam stranicu…';
+    pageCache.holdOn();
     try {
-      const doc = await docs.openPlan(st.id);
+      const doc = await docs.openPlan(id);
       if (token !== st.token) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
       // the whole page, sharp enough for a first zoom; detail is drawn on top when zoomed further
-      const cssW = Math.min(stage().clientWidth * 2.2, 3600 / dpr);
+      const cssW = pageCache.cssW();
       const cssH = (cssW * pg.h) / pg.w;
-      if (st.renderTask) st.renderTask.cancel();
-      await docs.renderRegion(doc, st.page + 1, [0, 0, pg.w, pg.h], b, cssW, cssH, { onTask: (t) => { st.renderTask = t; } });
+      await docs.renderRegion(doc, page + 1, [0, 0, pg.w, pg.h], b, cssW, cssH, { onTask: (t) => { st.renderTask = t; } });
       b.style.width = pg.w + 'px';
       b.style.height = pg.h + 'px';
       if (token !== st.token) return;
       $('#stageMsg').hidden = true;
+      pageCache.keep(id, page, b); // the picture is taken now, written while the employee looks
       scheduleDetail();
+      afterPage(id, page);
     } catch (e) {
       if (e && e.name === 'RenderingCancelledException') return;
       console.warn('viewer', e);
-      $('#stageMsg').textContent = 'Stranica se ne može prikazati.';
+      if (token === st.token) $('#stageMsg').textContent = 'Stranica se ne može prikazati.';
+    } finally {
+      pageCache.holdOff();
     }
+  }
+
+  /** The pages around this one are made ready while the employee looks at it. */
+  function afterPage(id, page) {
+    pageCache.warm(id, page + 1);
+    pageCache.warm(id, page - 1);
+    pageCache.around(id, page);
   }
 
   const scheduleDetail = debounce(async () => {
@@ -3055,6 +3232,7 @@ function boot() {
   if (S.mode === 'news') freshenMyjysk();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);
+  setTimeout(() => pageCache.start(), 6000); // pages of all planograms, after the start has settled
 }
 
 boot();

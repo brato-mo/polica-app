@@ -1,7 +1,7 @@
 {
- "code": 46,
- "name": "1.45",
- "notes": "Žuti okvir obuhvata sve primjerke artikla na polici (jedan do drugog ili jedan iznad drugog), ne pola",
- "size": 1954316,
- "sha256": "5a6ae2958d8fa66df8355ca6eb2eaf77be4334d2588849993c2db70ab1a8bff3"
+ "code": 47,
+ "name": "1.46",
+ "notes": "Stranice planograma se spremaju kao slike: cijeli planogram se otvara i lista odmah, bez čekanja na crtanje",
+ "size": 1958412,
+ "sha256": "5a41c870e94d0d2d7cd6a6b7678a11637cbff0601d5e5c2e15a16e969d60acc5"
 }
