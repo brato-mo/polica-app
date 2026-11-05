@@ -5,7 +5,7 @@ import { readPages, pageGraphics, photoImage, mul } from './extract.js';
 import { analyzePage, placeLabels, buildPlan, productBlock, labelPicture, rowPhoto } from './core.js';
 
 /** Version of what the reader stores; older planograms are read again after an update. */
-export const PLAN_VERSION = 2;
+export const PLAN_VERSION = 3; // 3: product boxes take every facing (gaps, partly hidden ones)
 
 const VENDOR = new URL('../vendor/pdfjs/', import.meta.url).href;
 pdfjs.GlobalWorkerOptions.workerSrc = VENDOR + 'pdf.worker.min.mjs';

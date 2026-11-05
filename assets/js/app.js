@@ -2004,10 +2004,9 @@ async function paintCrop(L) {
   }
   if (L.oc && !blk) {
     const extra = whole ? { b: label, nums: [S.item.num] } : undefined;
-    blk = docs.blockFor(plan, L.oc, r.photos, extra);
-    if (!blk) {
-      try { blk = docs.blockFor(plan, L.oc, await docs.photosOf(doc, pageIdx + 1), extra); } catch (e) { blk = null; }
-    }
+    // the photos of the whole page, not only of the part drawn here: facings outside the crop count too
+    try { blk = docs.blockFor(plan, L.oc, await docs.photosOf(doc, pageIdx + 1), extra); } catch (e) { blk = null; }
+    if (!blk) blk = docs.blockFor(plan, L.oc, r.photos, extra);
     if (blk) blockCache.set(key, blk);
     const inside = blk && blk[0] >= reg[0] && blk[2] <= reg[2] && blk[1] >= reg[1] && blk[3] <= reg[3];
     if (blk && !inside) {

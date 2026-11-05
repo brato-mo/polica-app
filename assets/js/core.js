@@ -539,17 +539,28 @@ export function productBlock(page, lab, imgs) {
   const h0 = i0.b[3] - i0.b[1], w0 = i0.b[2] - i0.b[0];
   // labels on the same row split the shelf between them
   const mates = page.labels.filter((o) => o !== lab && Math.abs(cy(o.b) - ly) < 0.75 * h0);
-  const lim0 = Math.max(-Infinity, ...mates.filter((o) => cx(o.b) < lx).map((o) => cx(o.b)));
-  const lim1 = Math.min(Infinity, ...mates.filter((o) => cx(o.b) > lx).map((o) => cx(o.b)));
-  const like = (im) => Math.abs(im.b[3] - i0.b[3]) <= 2 && Math.abs((im.b[3] - im.b[1]) - h0) <= 0.1 * h0
-    && Math.abs((im.b[2] - im.b[0]) - w0) <= 0.12 * w0 && cx(im.b) > lim0 && cx(im.b) < lim1 && !taken(im);
+  const sameRow = mates.filter((o) => Math.abs(cy(o.b) - ly) < 0.35 * h0);
+  const lim0 = Math.max(-Infinity, ...sameRow.filter((o) => cx(o.b) < lx).map((o) => cx(o.b)));
+  const lim1 = Math.min(Infinity, ...sameRow.filter((o) => cx(o.b) > lx).map((o) => cx(o.b)));
+  // the other labels on the very same shelf (same line), and the photo standing right over each of them: those
+  // photos are theirs. Any other photo goes with the label whose middle it is nearer to, give or take (the label
+  // stands under the middle of its facings).
+  const row = mates.filter((o) => Math.abs(cy(o.b) - ly) < 0.35 * h0);
+  const theirs = new Set(row.map((o) => labelPhoto(page, o, imgs)).filter((im) => im && im !== i0));
+  const rowX = row.map((o) => cx(o.b));
+  const mine = (im) => !theirs.has(im) && rowX.every((x) => Math.abs(cx(im.b) - lx) <= Math.abs(cx(im.b) - x) + 0.3 * w0);
+  // facings of one product: standing on the same line, about the same size (one may be partly hidden behind the
+  // next, or drawn with a little gap), each nearer to this label than to any other
+  const like = (im) => Math.abs(im.b[3] - i0.b[3]) <= Math.max(2, 0.06 * h0) && Math.abs((im.b[3] - im.b[1]) - h0) <= 0.25 * h0
+    && Math.abs((im.b[2] - im.b[0]) - w0) <= 0.45 * w0 && cx(im.b) > lim0 && cx(im.b) < lim1 && !taken(im) && mine(im);
+  const gap = Math.max(4, 0.75 * w0); // narrow products (vases, lamps, plants) stand with space between them
   const chain = (sideLeft) => {
     const out = [];
     let cur = i0;
     for (;;) {
       const nxt = photos.find((im) => im !== cur && !out.includes(im) && like(im) && (sideLeft
-        ? Math.abs(im.b[2] - cur.b[0]) < 2.5 && im.b[0] < cur.b[0]
-        : Math.abs(im.b[0] - cur.b[2]) < 2.5 && im.b[2] > cur.b[2]));
+        ? im.b[0] < cur.b[0] - 0.3 * w0 && im.b[2] > cur.b[0] - gap && im.b[2] < cur.b[0] + 0.6 * w0
+        : im.b[2] > cur.b[2] + 0.3 * w0 && im.b[0] < cur.b[2] + gap && im.b[0] > cur.b[2] - 0.6 * w0));
       if (!nxt) return out;
       out.push(nxt);
       cur = nxt;
@@ -566,7 +577,7 @@ export function productBlock(page, lab, imgs) {
         const x0 = a ? L[a - 1].b[0] : i0.b[0];
         const x1 = c ? R[c - 1].b[2] : i0.b[2];
         const asym = Math.abs((x0 + x1) / 2 - lx);
-        if (asym > Math.max(3, 0.2 * w0)) continue;
+        if (asym > Math.max(3, 0.25 * w0)) continue;
         if (a + c > best.n || (a + c === best.n && asym < best.asym)) best = { n: a + c, asym, a, c };
       }
     }
@@ -578,7 +589,7 @@ export function productBlock(page, lab, imgs) {
   for (let grew = true; grew;) {
     grew = false;
     for (const im of photos) {
-      if (set.includes(im) || taken(im)) continue;
+      if (set.includes(im) || taken(im) || !mine(im)) continue;
       if (cx(im.b) <= lim0 || cx(im.b) >= lim1) continue;
       const xo = Math.min(im.b[2], b[2]) - Math.max(im.b[0], b[0]);
       const iw = im.b[2] - im.b[0];
