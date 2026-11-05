@@ -205,6 +205,22 @@ export function answers(qs, scores, notes) {
   return out;
 }
 
+/**
+ * The result MYJYSK shows for the answers, in %: the points of the chosen options against the most there are (a
+ * 5 is worth 4 points, a 1 none). null when the form does not say what the options are worth.
+ */
+export function score(qs, scores) {
+  let got = 0, max = 0;
+  for (const q of qs) {
+    const vals = (q.opts || []).map((o) => +o.value).filter((v) => Number.isFinite(v));
+    const opt = optionFor(q, +(scores[q.id] || 5));
+    if (!vals.length || !opt || !Number.isFinite(+opt.value)) return null;
+    got += +opt.value;
+    max += Math.max(...vals);
+  }
+  return max > 0 ? Math.round((100 * got) / max) : null;
+}
+
 /** Monday 00:00 of the week of t: one AR rating per week. */
 export function weekStart(t) {
   const d = new Date(t);

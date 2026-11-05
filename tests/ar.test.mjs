@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { questions, suggestions, answers, missing, weekStart, doneThisWeek, optionFor } from '../assets/js/ar.js';
+import { questions, suggestions, answers, missing, weekStart, doneThisWeek, optionFor, score } from '../assets/js/ar.js';
 
-const opts = [['11', '1'], ['12', '2'], ['13', '3'], ['14', '4'], ['15', '5']].map(([id, text]) => ({ id, text }));
+const opts = [['11', '1'], ['12', '2'], ['13', '3'], ['14', '4'], ['15', '5']].map(([id, text], i) => ({ id, text, value: i }));
 const form = {
   guid: '00000000-0000-0000-0000-000000000001', name: 'AR Time - TEST',
   qs: [
@@ -56,4 +56,12 @@ test('one rating per week, from Monday', () => {
   assert.ok(doneThisWeek({ at: new Date(2026, 10, 2, 9).getTime() }, thu));
   assert.ok(!doneThisWeek({ at: new Date(2026, 10, 1, 20).getTime() }, thu));
   assert.ok(!doneThisWeek(null, thu));
+});
+
+test('the result is counted as MYJYSK counts it: a 5 is 4 points, a 1 none', () => {
+  const qs = questions(form);
+  assert.equal(score(qs, {}), 100);
+  assert.equal(score(qs, { 1: 4 }), 92);
+  assert.equal(score(qs, { 1: 1, 3: 1, 5: 1 }), 0);
+  assert.equal(score([{ id: 9, opts: [{ id: 'a', text: '5' }] }], {}), null);
 });

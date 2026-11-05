@@ -1,7 +1,7 @@
 {
- "code": 49,
- "name": "1.48",
- "notes": "AR artikli: posebne gotove rečenice za svaku ocjenu (4, 3, 2, 1) i svaku temu; tvoji komentari se pamte po ocjeni",
+ "code": 50,
+ "name": "1.49",
+ "notes": "AR artikli: tačan rezultat (računa se iz ocjena kao u MYJYSK), više ne piše 0%",
  "size": 1970826,
- "sha256": "e3c15a01c5d67f5910c9df7aa10c787b022cb1b4bee365be2d3c913559544dc1"
+ "sha256": "04c3cc235c3b5e685a8bc8540eb48290bcfa2d62aa7e7f1f9689d3026e1c5ff2"
 }

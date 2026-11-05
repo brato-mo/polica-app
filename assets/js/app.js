@@ -1610,7 +1610,7 @@ function arBar() {
   if (!mjOn()) return '';
   const k = arKept();
   const done = ar.doneThisWeek(k.last, Date.now());
-  const sub = done ? `Urađeno ove sedmice${k.last.score != null ? `, rezultat ${Math.round(k.last.score)}%` : ''}` : 'Nije urađeno ove sedmice';
+  const sub = done ? `Urađeno ove sedmice${k.last.score ? `, rezultat ${Math.round(k.last.score)}%` : ''}` : 'Nije urađeno ove sedmice';
   return `<button class="orders-bar ar-bar${done ? ' is-done' : ''}" type="button" data-mj="ar">${icon('list')}<span><b>AR artikli</b><small>${esc(sub)}</small></span><span class="go">${done ? 'Otvori' : 'Ocijeni'}</span></button>`;
 }
 
@@ -1669,7 +1669,8 @@ window.onMjAr = (r) => {
       const sc = +((S.ar.sent.scores || {})[q.id] || 5);
       if (n && sc < 5) { const u = arUsed(k, q.id); u[sc] = [n, ...(u[sc] || []).filter((x) => x !== n)].slice(0, 3); k.used[q.id] = u; }
     }
-    k.last = { at: Date.now(), id: res.id || 0, score: res.score == null ? null : res.score, form: k.form.name, status: res.status || '' };
+    const mine = ar.score(qs, S.ar.sent.scores || {});
+    k.last = { at: Date.now(), id: res.id || 0, score: res.score ? res.score : mine, form: k.form.name, status: res.status || '' };
     saveUser();
     S.ar.done = k.last;
     S.ar.err = null;
@@ -1713,7 +1714,7 @@ function renderAr() {
   const d = S.ar.done;
   if (d) {
     box.innerHTML = `<div class="mj-intro ar-ok"><h3>AR artikli završeni ✓</h3>
-      <p>Posjeta „${esc(d.form)}" je napravljena i završena u MYJYSK${d.score != null ? `, rezultat ${Math.round(d.score)}%` : ''}.</p>
+      <p>Posjeta „${esc(d.form)}" je napravljena i završena u MYJYSK${d.score ? `, rezultat ${Math.round(d.score)}%` : ''}.</p>
       ${d.id ? `<button class="btn btn-quiet btn-block" type="button" data-mj-open="/ui/store-visits/${+d.id}">Pogledaj u MYJYSK</button>` : ''}</div>`;
     return;
   }

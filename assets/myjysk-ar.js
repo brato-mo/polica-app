@@ -52,7 +52,7 @@
         if (!fields.length) fields = d.fields || [];
         var qs = fields.filter(function (f) { return !f.isHidden; }).map(function (f) {
           var opts = [];
-          try { opts = JSON.parse(f.values || '[]').map(function (v) { return { id: s(v.id, 20), text: s(v.text, 40) }; }); } catch (e) { opts = []; }
+          try { opts = JSON.parse(f.values || '[]').map(function (v) { return { id: s(v.id, 20), text: s(v.text, 40), value: +v.value || 0 }; }); } catch (e) { opts = []; }
           return { id: f.formFieldId, guid: s(f.guid, 40), type: f.fieldType, req: !!f.isRequired, name: s(f.name, 200), opts: opts };
         });
         return { forms: ar, form: { guid: hit.guid, name: hit.name, qs: qs } };
@@ -106,7 +106,7 @@
     }).then(function () {
       return get('/api/storevisits/' + id).then(function (r) {
         var d = data(r) || {};
-        return { id: id, status: s(d.statusStr, 30), score: d.averageScore == null ? null : +d.averageScore };
+        return { id: id, status: s(d.statusStr, 30), score: d.hasAverageScore ? +d.averageScore : null };
       }, function () { return { id: id }; });
     });
   }
