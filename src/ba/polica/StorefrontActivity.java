@@ -107,7 +107,11 @@ public class StorefrontActivity extends Activity {
             }
             if (!"view".equals(mode)) mode = "lookup";
             try {
-                target = "https://" + host + "/ui/article-search?query=" + URLEncoder.encode("\"" + query.trim() + "\"", "UTF-8");
+                // every status code: the search page leaves 81 (marked for deletion) out by itself
+                target = "https://" + host + "/ui/article-search?query=" + URLEncoder.encode("\"" + query.trim() + "\"", "UTF-8")
+                    + "&articlesSorting=relevance&articlesInStock=false&statusCode=" + URLEncoder.encode("[\"01\",\"02\",\"11\",\"12\",\"21\",\"31\",\"32\",\"41\",\"42\",\"51\",\"81\"]", "UTF-8")
+                    + "&storageStatus=%5B%5D&categories=%5B%5D&discontinuationDate=%5B%5D&articlesActiveFilter=false&articlesMarkedForDeletion=false"
+                    + "&articlesWithSMValues=false&articlesWithDMValueFilter=false&page=1&pageSize=40";
             } catch (Exception e) {
                 finishWith(null, "bad");
                 return;

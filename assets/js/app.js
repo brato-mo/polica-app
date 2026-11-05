@@ -232,6 +232,8 @@ function back() {
   if (t.id === 'minus') renderMinus();
   if (t.id === 'plans') renderPlans();
   if (t.id === 'ar') renderAr();
+  if (t.id === 'top') renderTop();
+  if (t.id === 'smdm') renderSm();
   if (t.id === 'home') renderHome();
   const sc = $(`#${t.id} .scroll`);
   if (sc && t.scroll) { const y = t.scroll; sc.scrollTop = y; requestAnimationFrame(() => { sc.scrollTop = y; }); }
@@ -341,7 +343,8 @@ function installUpdate() {
 /** Shown until the employee signs in (or chooses "Kasnije" for this start). Nothing else is shown before it. */
 function gateNeeded() {
   if (S.gateLater) return false;
-  try { return !!A.loginState && A.loginState() !== 'ok'; } catch (e) { return false; }
+  // only when no login is kept at all; a refused one is said in a line (the sessions may well still be open)
+  try { return !!A.loginState && A.loginState() === 'none'; } catch (e) { return false; }
 }
 
 function showGate(msg = '') {
@@ -421,11 +424,7 @@ window.onStoreStatus = (on, counts) => {
     S.site = {};
     for (const p of String(counts).split(',')) { const [k, v] = p.split(':'); S.site[k] = +v; }
     renderOrdersBar();
-    // different numbers than at the last read: read the new orders now (only if nothing is being typed)
-    if (cfg().autoref && siteDiff().length && top().id === 'home' && !$('#q').value.trim() && (!S.autoAt || Date.now() - S.autoAt > 10 * 60 * 1000)) {
-      S.autoAt = Date.now();
-      refreshOrders();
-    }
+    // the orders are read only when the employee taps (the bar then says what changed)
   }
   e.hidden = false;
   e.className = 'onl ' + (on ? 'is-on' : 'is-off');
@@ -661,7 +660,6 @@ const DEFAULTS = {
   phone: true, // show the customer's phone
   stale: 12, // hours after which the orders data is called old
   theme: 'auto', // auto = follows the phone, or light / dark
-  autoref: true, // when StoreFront shows different order numbers, read the new orders by itself
   watch: false, // look at the order numbers in the background and send a notification
   clr: { 21: true, 81: true }, // statuses on the list of articles to sell
   group: '5', // product group of that list (5 = the department's own)
@@ -730,7 +728,6 @@ function renderSettings() {
       <div class="chips">${tabNames.map(([k, t]) => `<button class="chip" type="button" role="checkbox" aria-checked="${c.tabs[k]}" data-tab="${k}">${t}</button>`).join('')}</div></div>
     ${sw('name', 'Prikaži ime kupca', '', c.name)}
     ${sw('phone', 'Prikaži telefon kupca', '', c.phone)}
-    ${sw('autoref', 'Sam učitaj nove narudžbe', 'Kad se otvori @APP@ i StoreFront pokaže drugačije brojeve, nove narudžbe se same pročitaju (bez dodira)', c.autoref)}
     ${sw('watch', 'Obavijest o novim narudžbama', 'Svakih pola sata u pozadini (7–21 h) gleda brojeve u StoreFrontu i javi obavijest. Android može odgoditi provjeru, a radi samo dok si prijavljen.', c.watch)}
     ${choice('stale', 'Upozori da su podaci stari nakon', [[6, '6 h'], [12, '12 h'], [24, '24 h']], c.stale)}
     ${act('orders-refresh', 'Osvježi narudžbe sada', o ? `${o.list.length} narudžbi, ${esc(ageText(o.at))}` : 'Još nisu učitane')}
@@ -1100,6 +1097,8 @@ function newsRow(st, a) {
 }
 
 // ------------------------------------------------------------------ Minus lista (StoreFront, only read)
+
+function renderStoreBars() { renderTopBar(); renderSmBar(); }
 
 function renderMinusBar() {
   const b = $('#minusBar');
@@ -1594,6 +1593,293 @@ function onNewsClick(t) {
 }
 
 
+// ------------------------------------------------ StoreFront jobs: stock, best sellers, SM/DM (assets/store-task.js)
+//
+// Each job runs in a hidden StoreFront page with the employee's own sign-in and answers through window.onStoreTask.
+
+const stJobs = new Map();
+let stSeq = 0;
+function stCall(arg, cb) {
+  if (!A.storeTask) return false;
+  const job = `j${++stSeq}`;
+  stJobs.set(job, cb);
+  try { A.storeTask(JSON.stringify({ ...arg, job })); return true; } catch (e) { stJobs.delete(job); return false; }
+}
+window.onStoreTask = (r) => {
+  const cb = r && stJobs.get(r.job);
+  if (!cb) return;
+  stJobs.delete(r.job);
+  if (r.how === 'ok') { S.user.store = { ok: true }; }
+  cb(r);
+};
+
+/** What a status code means (StoreFront's own list). */
+const ST_TEXT = {
+  '01': 'novi artikal', '02': 'novi, samo online', '11': 'aktivan', '12': 'aktivan, samo raspodjela', '21': 'ukinut, ide na rasprodaju',
+  '31': 'naručivanje privremeno blokirano', '32': 'rezervisan za prodaju', '41': 'nabavni artikal', '42': 'samo online', '51': 'direktna isporuka', '81': 'označen za brisanje',
+};
+const stText = (st) => ST_TEXT[st] || '';
+const stPill = (st) => (st ? `<span class="pill ${st === '21' || st === '81' ? 'pill-warn' : 'pill-muted'}">Status ${esc(st)}${stText(st) ? `: ${esc(stText(st))}` : ''}</span>` : '');
+
+// stock movements: what the store system calls them (SAP movement types)
+const MOVE = { '251': 'Prodano', '252': 'Vraćeno', '101': 'Stiglo', '102': 'Storno prijema', '701': 'Inventura', '702': 'Inventura', '711': 'Inventura', '712': 'Inventura', '551': 'Otpis', '552': 'Storno otpisa', '311': 'Prenos', '641': 'Poslano', '643': 'Poslano' };
+const moveName = (m) => MOVE[m.type] || (m.q > 0 ? 'Ulaz' : 'Izlaz');
+const dm = (t) => { const d = new Date(t); return `${d.getDate()}.${d.getMonth() + 1}.`; };
+const signed = (n) => (n > 0 ? `+${whole(n)}` : n < 0 ? `−${whole(-n)}` : '0');
+
+/** One article's stock in the store, kept a few minutes: num -> { at, d, busy, err } */
+S.stock = new Map();
+
+function stockLoad(num, force = false) {
+  const c = S.stock.get(num);
+  if (c && (c.busy || (!force && c.d && Date.now() - c.at < 180000))) { stockPaint(num); return; }
+  const ok = stCall({ mode: 'article', num }, (r) => {
+    S.stock.set(num, { at: Date.now(), d: r.how === 'ok' ? r.res : (c && c.d) || null, err: r.how === 'ok' ? null : r.how });
+    stockPaint(num);
+  });
+  if (ok) S.stock.set(num, { ...(c || {}), busy: true });
+  stockPaint(num);
+}
+
+function stockPaint(num) {
+  for (const el of document.querySelectorAll(`[data-stock="${num}"]`)) el.innerHTML = stockHtml(num);
+}
+
+/** The stock over the last 30 days as a small line: the stock after each movement. */
+function stockSpark(hist, now) {
+  const from = now - 30 * 86400000;
+  const pts = hist.filter((m) => m.t >= from).slice().reverse();
+  if (pts.length < 2) return '';
+  const first = hist.find((m) => m.t < from);
+  const series = [{ t: from, v: first ? first.after : pts[0].after - pts[0].q }, ...pts.map((m) => ({ t: m.t, v: m.after })), { t: now, v: pts[pts.length - 1].after }];
+  const max = Math.max(1, ...series.map((p) => p.v)), min = Math.min(0, ...series.map((p) => p.v));
+  const X = (t) => ((t - from) / (now - from)) * 100, Y = (v) => 26 - ((v - min) / (max - min || 1)) * 24;
+  let d = '';
+  series.forEach((p, i) => { d += i ? ` H${X(p.t).toFixed(1)} V${Y(p.v).toFixed(1)}` : `M${X(p.t).toFixed(1)} ${Y(p.v).toFixed(1)}`; });
+  return `<div class="stk-spark"><svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><path d="${d}"/></svg><span>zaliha zadnjih 30 dana · najviše ${whole(max)}</span></div>`;
+}
+
+function stockHtml(num) {
+  const open = `<button class="text-btn stk-open" type="button" data-store="${esc(num)}">${icon('link')}Otvori u StoreFrontu</button>`;
+  if (!A.storeTask) return `<button class="btn btn-soft btn-block btn-small store-btn" type="button" data-store="${esc(num)}">${icon('link')}Cijena i zaliha u StoreFrontu</button>`;
+  const c = S.stock.get(num) || {};
+  const d = c.d;
+  if (!d) {
+    if (c.busy) return '<div class="stk stk-wait"><i class="mj-busy"></i>Učitavam zalihu iz StoreFronta…</div>';
+    const why = c.err === 'login' ? 'StoreFront traži prijavu. Otvori ga jednom i prijavi se.' : c.err ? 'StoreFront nije odgovorio.' : '';
+    return `<div class="stk stk-wait">${why ? `${esc(why)} <button class="text-btn" type="button" data-stock-retry="${esc(num)}">Pokušaj ponovo</button>` : ''}${open}</div>`;
+  }
+  const a = d.sd || {}, md = d.md || {};
+  const unit = (a.unit || md.unit || '').toLowerCase();
+  const st = md.st || a.st;
+  const now = Date.now();
+  // the history grouped by day and kind: "4.11. Prodano −3 → 6"
+  const rows = [];
+  for (const m of d.hist || []) {
+    const key = `${dm(m.t)}|${moveName(m)}`;
+    const last = rows[rows.length - 1];
+    if (last && last.key === key) { last.q += m.q; continue; }
+    if (rows.length >= 7) break;
+    rows.push({ key, day: dm(m.t), name: moveName(m), q: m.q, after: m.after });
+  }
+  const sold30 = a.sold30 != null && a.sold30 !== 0 ? a.sold30 : d.sold30h;
+  const facts = [
+    a.sm != null ? `SM ${whole(a.sm)}` : '', a.dm ? `DM ${whole(a.dm)}` : '', a.cap ? `polica ${whole(a.cap)}` : '',
+    md.price ? `${money(md.price)} ${esc(md.cur === 'BAM' ? 'KM' : md.cur || '')}` : '',
+  ].filter(Boolean).join(' · ');
+  return `<div class="stk">
+    <div class="stk-top">
+      <div class="${(a.stock ?? 0) <= 0 ? 'is-bad' : ''}"><b>${whole(a.stock ?? 0)}</b><span>na stanju${unit ? ` (${esc(unit)})` : ''}</span></div>
+      <div><b>${whole(a.free ?? a.stock ?? 0)}</b><span>slobodno</span></div>
+      <div><b>${whole(d.sold7 || 0)}</b><span>prodano 7 dana</span></div>
+      <div><b>${whole(sold30 || 0)}</b><span>prodano 30 dana</span></div>
+    </div>
+    ${facts || st ? `<p class="stk-facts">${st ? stPill(st) : ''}${facts ? `<span>${facts}</span>` : ''}</p>` : ''}
+    ${d.recv ? `<p class="stk-line">Zadnja isporuka ${dm(d.recv.t)} (${signed(d.recv.q)})</p>` : ''}
+    ${stockSpark(d.hist || [], now)}
+    ${rows.length ? `<div class="stk-hist">${rows.map((x) => `<div><span>${esc(x.day)}</span><span>${esc(x.name)}</span><b class="${x.q < 0 ? 'is-out' : 'is-in'}">${signed(x.q)}</b><span>→ ${whole(x.after)}</span></div>`).join('')}</div>` : '<p class="stk-line">Nema promjena zalihe.</p>'}
+    <div class="stk-foot"><small>${esc(ageText(c.at))}</small>${open}</div>
+  </div>`;
+}
+
+// ------------------------------------------------ Najprodavanije: the department's best sellers
+
+S.topDays = 7;
+S.topBusy = false;
+
+function renderTopBar() {
+  const b = $('#topBar');
+  if (!b) return;
+  b.hidden = !S.plans.length || !A.storeTask;
+  if (b.hidden) return;
+  const t = S.user.top;
+  b.innerHTML = `${icon('chart')}<span><b>Najprodavanije u odjelu</b><small>${t && t.list ? `${t.list.length} artikala · ${esc(ageText(t.at))}` : 'Zadnjih 7 i 30 dana, iz StoreFronta'}</small></span><span class="go">${t && t.list ? 'Otvori' : 'Učitaj'}</span>`;
+}
+
+function openTop() {
+  go('top');
+  renderTop();
+  const t = S.user.top;
+  if (!t || !t.list || Date.now() - t.at > 6 * 3600000) loadTop();
+}
+
+function loadTop() {
+  if (S.topBusy) return;
+  const ok = stCall({ mode: 'top', cat: cfg().group || '5', deep: 40 }, (r) => {
+    S.topBusy = false;
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
+      S.user.top = { at: Date.now(), list: r.res.list.slice(0, 80).map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, sold30: x.sold30, sold7: x.sold7 })) };
+      saveUser();
+    } else {
+      toast(r.how === 'login' ? 'StoreFront traži prijavu. Otvori artikal u StoreFrontu i prijavi se.' : 'Najprodavanije se nije moglo učitati. Pokušaj ponovo.');
+    }
+    renderTopBar();
+    if (top().id === 'top') renderTop();
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.topBusy = true;
+  renderTop();
+}
+
+function renderTop() {
+  const box = $('#topBody');
+  if (!box) return;
+  const t = S.user.top;
+  const days = S.topDays;
+  const seg = `<div class="seg" role="tablist">${[7, 30].map((n) => `<button class="seg-btn" type="button" role="tab" aria-selected="${days === n}" data-top-days="${n}">${n} dana</button>`).join('')}</div>`;
+  const head = `<div class="top-head">${seg}<button class="text-btn" type="button" data-top="refresh" ${S.topBusy ? 'disabled' : ''}>${icon('refresh')}Osvježi</button></div>`;
+  const busy = S.topBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam prodaju iz StoreFronta… (do pola minute)</p>' : '';
+  if (!t || !t.list) { box.innerHTML = `${head}${busy}${S.topBusy ? '' : '<p class="empty">Još nije učitano.</p>'}`; return; }
+  const key = days === 7 ? 'sold7' : 'sold30';
+  const list = t.list.filter((x) => typeof x[key] === 'number' && x[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 40);
+  const rows = list.map((x, i) => {
+    const sub = `<span class="top-sold"><b>${whole(x[key])}</b> prodano · na stanju ${whole(x.stock)}${x.st !== '11' ? ` · status ${esc(x.st)}` : ''}</span>`;
+    const rank = `<span class="top-rank">${i + 1}</span>`;
+    if (S.index.byNum.has(x.num)) return `<div class="top-row">${rank}${itemRow(x.num, { sub })}</div>`;
+    return `<div class="top-row">${rank}<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span></span>${sub}</span></div></div>`;
+  });
+  box.innerHTML = `${head}${busy}
+    <p class="count-line">Odjel ${esc(cfg().group || '5')} · ${days === 7 ? 'zadnjih 7 dana (iz povijesti zalihe najprodavanijih)' : 'zadnjih 30 dana (StoreFront)'} · ${esc(ageText(t.at))}</p>
+    ${rows.length ? `<div class="list">${rows.join('')}</div>` : '<p class="empty">Ništa prodano u tom periodu.</p>'}`;
+}
+
+// ------------------------------------------------ SM i DM: values of the department's articles that go out (21, 81)
+
+S.sm = { busy: '', edit: {}, st: ['21', '81'] };
+
+function renderSmBar() {
+  const b = $('#smBar');
+  if (!b) return;
+  b.hidden = !S.plans.length || !A.storeTask;
+  if (b.hidden) return;
+  const m = S.user.smdm;
+  b.innerHTML = `${icon('list')}<span><b>SM vrijednosti za status 21 i 81</b><small>${m && m.list ? `${m.list.length} ${plural(m.list.length, 'artikal', 'artikla', 'artikala')} još ima SM iznad 0 · ${esc(ageText(m.at))}` : 'Da ne stižu artikli koji idu na rasprodaju'}</small></span><span class="go">${m && m.list ? 'Otvori' : 'Učitaj'}</span>`;
+}
+
+function openSm() {
+  S.sm.edit = {};
+  S.sm.result = null;
+  go('smdm');
+  renderSm();
+  loadSm();
+}
+
+function loadSm() {
+  if (S.sm.busy) return;
+  const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st }, (r) => {
+    S.sm.busy = '';
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
+      S.user.smdm = { at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30 })) };
+      saveUser();
+    } else {
+      toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'SM vrijednosti se nisu mogle učitati. Pokušaj ponovo.');
+    }
+    renderSmBar();
+    if (top().id === 'smdm') renderSm();
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.sm.busy = 'load';
+  renderSm();
+}
+
+function smSend(items) {
+  if (!items.length || S.sm.busy) return;
+  const ok = stCall({ mode: 'smset', items }, (r) => {
+    S.sm.busy = '';
+    const m = S.user.smdm;
+    const want = new Map(items.map((x) => [x.num, x]));
+    if (r.how === 'ok' && r.res) {
+      const done = new Set(r.res.done || []);
+      if (m && m.list) {
+        m.list = m.list.map((x) => (done.has(x.num) ? { ...x, sm: want.get(x.num).sm } : x)).filter((x) => x.sm > 0);
+        m.at = Date.now();
+      }
+      for (const n of done) delete S.sm.edit[n];
+      S.sm.result = { done: done.size, failed: r.res.failed || [] };
+      saveUser();
+    } else {
+      S.sm.result = { done: 0, failed: [], err: r.how === 'login' ? 'StoreFront traži prijavu. Ništa nije promijenjeno ili samo dio; učitaj listu ponovo.' : 'StoreFront nije odgovorio do kraja. Učitaj listu ponovo da vidiš šta je promijenjeno.' };
+    }
+    renderSmBar();
+    if (top().id === 'smdm') renderSm();
+    loadSm(); // read back what StoreFront now has
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.sm.busy = 'send';
+  renderSm();
+}
+
+function renderSm() {
+  const box = $('#smBody');
+  if (!box) return;
+  const m = S.user.smdm;
+  const list = (m && m.list) || [];
+  const busy = S.sm.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Čitam SM vrijednosti iz StoreFronta…</p>'
+    : S.sm.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
+  const res = S.sm.result;
+  const resLine = res ? (res.err ? `<p class="ar-err">${esc(res.err)}</p>`
+    : `<p class="sm-ok">Spremljeno u StoreFront: ${res.done} ${plural(res.done, 'artikal', 'artikla', 'artikala')}.${res.failed.length ? ` Nije prošlo: ${res.failed.map((f) => esc(f.num)).join(', ')}.` : ''}</p>`) : '';
+  const intro = `<details class="sm-intro"><summary>Šta su SM i DM?</summary>
+    <p><b>SM</b> je količina koju sistem želi da trgovina uvijek ima od tog artikla. Kad zaliha padne ispod SM, automatsko naručivanje šalje robu iz skladišta dok se ne dopuni.</p>
+    <p><b>DM</b> je količina za izlaganje (izložbeni komadi), koja se drži na prodajnom mjestu.</p>
+    <p>Artikal sa <b>statusom 21</b> (ukinut, ide na rasprodaju) ili <b>81</b> (označen za brisanje) a sa SM iznad 0 i dalje se može dopunjavati. Kad mu SM staviš na 0, sistem ga više ne šalje za dopunu, a ono što imaš rasprodaš. DM se ne mijenja.</p></details>`;
+  const edits = Object.entries(S.sm.edit).filter(([n, v]) => { const x = list.find((y) => y.num === n); return x && +v !== x.sm; });
+  const dis = S.sm.busy ? 'disabled' : '';
+  const rows = list.map((x) => {
+    const v = S.sm.edit[x.num] ?? x.sm;
+    const changed = +v !== x.sm;
+    return `<div class="sm-row${changed ? ' is-changed' : ''}">
+      <div class="sm-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span>
+        <span class="pills">${stPill(x.st)}${S.index.byNum.has(x.num) ? '<span class="pill">U planogramu</span>' : ''}</span>
+        <span class="sm-facts">Na stanju ${whole(x.stock)} · prodano 30 dana ${whole(x.sold30)}${x.dm ? ` · DM ${whole(x.dm)}` : ''}</span></div>
+      <label class="sm-edit"><span>SM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(v)}" data-sm-in="${esc(x.num)}" ${dis}></label>
+      <button class="chip" type="button" data-sm-zero="${esc(x.num)}" ${dis} aria-label="SM na 0">0</button>
+    </div>`;
+  }).join('');
+  box.innerHTML = `${intro}${busy}${resLine}
+    <div class="top-head"><p class="count-line">${m ? `Odjel ${esc(cfg().group || '5')} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM iznad 0 · ${esc(ageText(m.at))}` : ''}</p>
+      <button class="text-btn" type="button" data-sm="reload" ${dis}>${icon('refresh')}Osvježi</button></div>
+    ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Stavi SM na 0 za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM iznad 0. Sve je čisto.</p>' : ''}
+    ${rows ? `<div class="sm-list">${rows}</div>` : ''}
+    ${edits.length ? `<div class="sm-save"><button class="btn btn-primary btn-block" type="button" data-sm="save" ${dis}>Spremi promjene (${edits.length})</button></div>` : ''}`;
+}
+
+async function onSmClick(t) {
+  if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = 0; S.sm.result = null; renderSm(); return; }
+  const a = t.dataset.sm;
+  const list = (S.user.smdm && S.user.smdm.list) || [];
+  if (a === 'reload') { S.sm.result = null; loadSm(); return; }
+  let items = [];
+  if (a === 'all0') items = list.map((x) => ({ num: x.num, sm: 0, dm: x.dm }));
+  if (a === 'save') items = list.filter((x) => S.sm.edit[x.num] != null && +S.sm.edit[x.num] !== x.sm).map((x) => ({ num: x.num, sm: Math.max(0, Math.round(+S.sm.edit[x.num] || 0)), dm: x.dm }));
+  if (!items.length) return;
+  const zero = items.filter((x) => x.sm === 0).length;
+  const go2 = await ask(`Promijeniti SM za ${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')}?`,
+    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` ${zero === items.length ? 'Svima' : `Za ${zero}`} SM ide na 0, pa ih automatsko naručivanje više ne dopunjava.` : ''} DM ostaje isti.</p>`,
+    [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
+  if (go2) smSend(items);
+}
+
 // ------------------------------------------------ AR artikli: the weekly rating of the department in MYJYSK
 //
 // The employee rates his department 1-5 per question; everything starts at 5. Under 5 MYJYSK wants a comment: he
@@ -1901,7 +2187,7 @@ function renderHome() {
   $('#newsWrap').hidden = !nw;
   if (nw) {
     $('#homeStats').textContent = 'Zadaci i vijesti iz MYJYSK';
-    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar']) $(id).hidden = true;
+    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar', '#topBar', '#smBar']) $(id).hidden = true;
     for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
     renderNews();
     return;
@@ -1921,6 +2207,7 @@ function renderHome() {
   renderOrdersBar();
   renderClearBar();
   renderMinusBar();
+  renderStoreBars();
   $('#recentEmpty').hidden = recent.length > 0 || favs.length > 0;
   $('#recentHead').hidden = recent.length === 0;
   for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
@@ -2063,7 +2350,7 @@ function renderItem() {
   } else {
     h += '<div class="loc loc-off"><div class="loc-foot" style="margin:0;padding:0;border:0"><p>Ovaj artikal se spominje u planogramu, ali nema svoje mjesto na crtežu.</p></div></div>';
   }
-  h += `<button class="btn btn-soft btn-block btn-small store-btn" type="button" data-store="${esc(num)}">${icon('link')}Cijena i zaliha u StoreFrontu</button>`;
+  h += `<div class="stock-box" data-stock="${esc(num)}">${stockHtml(num)}</div>`;
   h += ordersBlock(num, { after: true });
   const page = L.oc ? L.oc.p : L.row ? L.row.p : null;
   if (page != null) {
@@ -2107,6 +2394,7 @@ function renderItem() {
     const d = here.getBoundingClientRect().left - strip.getBoundingClientRect().left;
     strip.scrollLeft += d - (strip.clientWidth - here.offsetWidth) / 2;
   }
+  stockLoad(num);
   if (page != null) paintCrop(L).catch((e) => {
     console.warn('crop', e);
     const w = $('#crop .wait');
@@ -2310,7 +2598,7 @@ function renderMissing(code) {
   const say = (t, cls = '') => { box.innerHTML = `<p class="store-msg ${cls}">${t}</p>`; };
   const storeLine = (x) => {
     const bits = [x.stock ? `Zaliha u prodavnici: ${esc(x.stock)}` : '', x.price ? esc(x.price) : ''].filter(Boolean);
-    return bits.length ? `<span class="store-line">${bits.join(' · ')}</span>` : '';
+    return `${x.st ? `<span class="pills">${stPill(x.st)}</span>` : ''}${bits.length ? `<span class="store-line">${bits.join(' · ')}</span>` : ''}`;
   };
   S.storeCb = (r) => {
     $('.store-hint').hidden = r.how === 'ok' && (r.results || []).length > 0;
@@ -2329,11 +2617,28 @@ function renderMissing(code) {
       ? ordersBlock(x.num, { label: `${x.num} ${x.name || ''}`.trim() })
       : i === 0 ? ordersBlock(x.num, { after: true }) : '')).join('');
     box.innerHTML = `${ord}<p class="store-msg">Dodirni pravi artikal i barkod ${esc(code)} se povezuje s njim.</p><div class="list">${rows.join('')}</div>`;
+    if (r.via === 'task') {
+      box.insertAdjacentHTML('beforeend', `<div class="stock-box" data-stock="${esc(res[0].num)}">${stockHtml(res[0].num)}</div>`);
+      stockLoad(res[0].num);
+    }
   };
-  const askStore = () => { say('Tražim u StoreFrontu…'); A.storefront(code, 'lookup'); };
+  // asked in the background with every status code (StoreFront's own search page leaves 81 out); its page only
+  // when it wants a sign-in, or on an older version of the app
+  const askStore = () => {
+    say('Tražim u StoreFrontu…');
+    const ok = stCall({ mode: 'find', code }, (r) => {
+      const t = top();
+      if (t.id !== 'missing' || t.state !== code) return;
+      if (r.how === 'login') { A.storefront(code, 'lookup'); return; }
+      if (r.how !== 'ok') { say('StoreFront nije odgovorio. Provjeri vezu i pokušaj ponovo.', 'is-bad'); return; }
+      const list = (r.res && r.res.list) || [];
+      S.storeCb({ how: 'ok', via: 'task', results: list.map((x) => ({ num: x.num, name: x.name, st: x.st, stock: `${whole(x.stock)} ${(x.unit || '').toLowerCase()}`.trim(), price: x.price ? `${money(x.price)} KM` : '' })) });
+    });
+    if (!ok) A.storefront(code, 'lookup');
+  };
   $('#storeGo').addEventListener("click", askStore);
   // after the first successful answer every unknown barcode is asked there without a tap
-  if (cfg().auto && S.user.store && S.user.store.ok && !S.tried.has(code)) { S.tried.add(code); askStore(); }
+  if (cfg().auto && ((S.user.store && S.user.store.ok) || A.storeTask) && !S.tried.has(code)) { S.tried.add(code); askStore(); }
 }
 
 function openMissing(code, opts = {}) {
@@ -3307,6 +3612,15 @@ function bind() {
     toast(words ? 'Riječi su spremljene.' : 'Vraćene su zadane riječi.');
   });
 
+  // SM screen: a typed value is kept until saved (the list is drawn again only to show the save button)
+  $('#smBody').addEventListener('change', (ev) => {
+    const n = ev.target.dataset.smIn;
+    if (!n) return;
+    S.sm.edit[n] = Math.max(0, Math.min(9999, Math.round(+ev.target.value || 0)));
+    S.sm.result = null;
+    renderSm();
+  });
+
   // AR screen: the comments are kept as they are typed, the form can be changed
   $('#arBody').addEventListener('input', (ev) => { const n = ev.target.dataset.arNote; if (n) S.ar.notes[n] = ev.target.value; });
   $('#arBody').addEventListener('change', (ev) => {
@@ -3321,7 +3635,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3346,6 +3660,12 @@ function bind() {
     if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
     if (t.id === 'minusBar') { openMinus(); return; }
+    if (t.id === 'topBar') { openTop(); return; }
+    if (t.id === 'smBar') { openSm(); return; }
+    if (t.dataset.topDays) { S.topDays = +t.dataset.topDays; renderTop(); return; }
+    if (t.dataset.top === 'refresh') { loadTop(); return; }
+    if (t.dataset.sm || t.dataset.smZero) { onSmClick(t); return; }
+    if (t.dataset.stockRetry) { stockLoad(t.dataset.stockRetry, true); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
     if (t.dataset.clrXmas) { S.clr.peek = !S.clr.peek; renderClearance(); return; }
@@ -3408,6 +3728,7 @@ function boot() {
   syncMyjysk(false);
   renderHome();
   if (gateNeeded()) showGate();
+  else { try { if (A.loginState && A.loginState() === 'refused') setTimeout(() => toast('StoreFront nije prihvatio sačuvanu lozinku. Upiši je ponovo u Postavke → Prijava.'), 1500); } catch (e) { /* older shell */ } }
   if (S.mode === 'news') freshenMyjysk();
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);

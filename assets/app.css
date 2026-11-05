@@ -1197,3 +1197,62 @@ button.code-chip:active { transform: scale(.96); }
 .ar-send { margin-top: 8px; min-height: 54px; font-size: 16px; }
 .ar-send .mj-busy { margin-right: 8px; }
 .ar-ok h3 { color: var(--ink); }
+
+/* Stock of one article, from StoreFront */
+.stock-box { margin: 0 0 16px; }
+.stk { padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-1); }
+.stk-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.stk-top { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 10px; }
+.stk-top div { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.stk-top b { font-size: 24px; font-weight: 800; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stk-top span { color: var(--ink-2); font-size: 12px; font-weight: 600; line-height: 1.25; }
+.stk-top .is-bad b { color: var(--danger); }
+.stk-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
+.stk-line { margin: 0 0 8px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
+.stk-spark { margin: 4px 0 10px; }
+.stk-spark svg { display: block; width: 100%; height: 34px; }
+.stk-spark path { fill: none; stroke: var(--primary); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.stk-spark span { color: var(--ink-3); font-size: 11.5px; font-weight: 600; }
+.stk-hist { display: grid; gap: 2px; margin: 0 0 6px; font-size: 13.5px; }
+.stk-hist div { display: grid; grid-template-columns: 3.4em 1fr auto 3.6em; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); }
+.stk-hist div:first-child { border-top: 0; }
+.stk-hist span:first-child { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.stk-hist b { font-variant-numeric: tabular-nums; }
+.stk-hist .is-out { color: var(--danger); }
+.stk-hist .is-in { color: var(--primary); }
+.stk-hist span:last-child { color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+.stk-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.stk-foot small { color: var(--ink-3); font-size: 12px; }
+.stk-open .ico { width: 16px; height: 16px; margin-right: 4px; vertical-align: -3px; }
+.pill-warn { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+
+/* Best sellers */
+.top-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; }
+.top-head .seg { flex: 1; margin: 0; max-width: 260px; }
+.top-head .count-line { margin: 0; }
+.top-head .text-btn .ico { width: 16px; height: 16px; margin-right: 4px; vertical-align: -3px; }
+.top-row { position: relative; }
+.top-rank { position: absolute; z-index: 1; left: 4px; top: 6px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 800; line-height: 22px; text-align: center; }
+.top-sold { display: block; margin-top: 4px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
+.top-sold b { color: var(--ink); font-size: 15px; }
+
+/* SM and DM */
+.sm-intro { margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); font-size: 14px; line-height: 1.45; }
+.sm-intro summary { font-weight: 800; cursor: pointer; }
+.sm-intro p { margin: 8px 0 0; color: var(--ink-2); }
+.sm-ok { margin: 0 0 12px; padding: 10px 14px; border-radius: 14px; background: var(--primary-soft); color: var(--ink); font-size: 14px; font-weight: 700; }
+.sm-list { display: grid; gap: 8px; margin-top: 12px; }
+.sm-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); }
+.sm-row.is-changed { box-shadow: var(--shadow-1), inset 3px 0 0 var(--primary); }
+.sm-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sm-facts { color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+.sm-edit { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink-3); font-size: 11px; font-weight: 800; }
+.sm-edit input { width: 64px; min-height: 40px; padding: 0 6px; border: 1.5px solid var(--line); border-radius: 10px; background: none; color: var(--ink); font: inherit; font-size: 17px; font-weight: 800; text-align: center; }
+.sm-edit input:focus { outline: none; border-color: var(--primary); }
+.sm-row .chip { min-width: 40px; min-height: 40px; padding: 0; font-weight: 800; }
+.sm-save { position: sticky; bottom: 0; padding: 12px 0 4px; background: linear-gradient(transparent, var(--bg) 30%); }
+.sm-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.sm-main .pills { min-width: 0; }
+.sm-main .pill, .stk-facts .pill, .store-line + .pills .pill { white-space: normal; text-align: left; }
+.stk-open { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stk-open .ico { margin-right: 0; vertical-align: 0; }

@@ -29,7 +29,7 @@ final class AutoLogin {
     // sign-in host sometimes shows its form again after a good try ("session could not be established"); one more try
     // is made then, never more
     private static final java.util.Map<WebView, java.util.Map<String, Integer>> BACK = new java.util.WeakHashMap<>();
-    private static final int VERSION = 2; // a "refused" kept by an older version may be wrong: forgotten once
+    private static final int VERSION = 3; // a "refused" kept by an older version may be wrong: forgotten once
 
     private AutoLogin() {
     }
@@ -187,8 +187,16 @@ final class AutoLogin {
                                     ui.postDelayed(again, 1200);
                                     return;
                                 }
-                                p.edit().putBoolean("refused", true).apply();
-                                note(p, "refused", host);
+                                if (v.contains("again-bad")) {
+                                    // the page says the password is wrong: stop trying, the employee types it again
+                                    p.edit().putBoolean("refused", true).apply();
+                                    note(p, "refused", host);
+                                } else {
+                                    // the form came back twice without a word about the password (the gateway's own
+                                    // hiccup, or two pages signing in at once): no more tries here, but the kept
+                                    // login stays good
+                                    note(p, "stuck", host);
+                                }
                             } else if (v.contains("none") && ++tries[0] < 5) {
                                 ui.postDelayed(again, 700); // the form is not drawn yet
                             } else if (v.contains("none") && idp) {

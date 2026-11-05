@@ -1109,6 +1109,22 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** A StoreFront job (see assets/store-task.js): find, article, top, smdm, smset. Answer: window.onStoreTask. */
+        @JavascriptInterface
+        public void storeTask(final String argJson) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    StoreTask.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), argJson, new StoreTask.Callback() {
+                        @Override
+                        public void done(JSONObject answer) {
+                            runJs("window.onStoreTask&&onStoreTask(" + answer + ")");
+                        }
+                    });
+                }
+            });
+        }
+
         /** The weekly AR rating in MYJYSK (see assets/myjysk-ar.js): reads the form or sends the answers. Answer: window.onMjAr. */
         @JavascriptInterface
         public void myjyskAr(final String argJson) {

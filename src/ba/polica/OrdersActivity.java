@@ -299,11 +299,12 @@ public class OrdersActivity extends Activity {
         bar.setVisibility(on ? View.VISIBLE : View.GONE);
         web.setAlpha(on ? 1f : 0.01f);
         Window w = getWindow();
+        // as a strip, this window takes neither taps nor the keyboard: typing goes to the app under it
         if (on) {
-            w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
             if (floatBox.isShowing()) floatBox.hide();
         } else {
-            w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
             if (!floatBox.isShowing()) floatBox.show();
         }
     }

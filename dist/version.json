@@ -1,7 +1,7 @@
 {
- "code": 50,
- "name": "1.49",
- "notes": "AR artikli: tačan rezultat (računa se iz ocjena kao u MYJYSK), više ne piše 0%",
- "size": 1970826,
- "sha256": "04c3cc235c3b5e685a8bc8540eb48290bcfa2d62aa7e7f1f9689d3026e1c5ff2"
+ "code": 51,
+ "name": "1.50",
+ "notes": "Zaliha i povijest zalihe na artiklu; skeniranje nalazi i status 21/81; Najprodavanije (7 i 30 dana); SM vrijednosti za status 21/81 (pojedinačno ili sve na 0); narudžbe se više ne učitavaju same i ne blokiraju tastaturu; nema više lažnog traženja lozinke",
+ "size": 1983180,
+ "sha256": "960a302d4098b8ab92d2038a553f9e09b2cded269e0056ae3b3ea8fdbf5c2ae6"
 }

@@ -21,6 +21,7 @@
   <symbol id="i-map" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M3.5 15h17M9.5 4.5v15M15 4.5v15"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4.5 8.5h13l-3.5-3.5M19.5 15.5h-13l3.5 3.5"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.75" cy="7" r="1"/><circle cx="4.75" cy="12" r="1"/><circle cx="4.75" cy="17" r="1"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2M6.5 7l1 12a2 2 0 0 0 2 1.5h5a2 2 0 0 0 2-1.5l1-12"/></symbol>
   <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3.5 8 4v9l-8 4-8-4v-9z"/><path d="m4 7.5 8 4 8-4M12 11.5v9"/></symbol>
@@ -68,6 +69,8 @@
     <button class="orders-bar" id="ordersBar" type="button" hidden></button>
     <button class="orders-bar" id="clearBar" type="button" hidden></button>
     <button class="orders-bar" id="minusBar" type="button" hidden></button>
+    <button class="orders-bar" id="topBar" type="button" hidden></button>
+    <button class="orders-bar" id="smBar" type="button" hidden></button>
 
     <div id="results" hidden></div>
 
@@ -199,6 +202,24 @@
   <div class="fab-dock">
     <button class="fab fab-quiet" type="button" id="attachBack">Nazad na vijest</button>
   </div>
+</section>
+
+<!-- The department's best sellers, from StoreFront -->
+<section id="top" class="screen" aria-label="Najprodavanije">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">Najprodavanije</span>
+  </header>
+  <div class="scroll" id="topBody"></div>
+</section>
+
+<!-- SM and DM values of the department's articles with status 21 / 81 -->
+<section id="smdm" class="screen" aria-label="SM i DM vrijednosti">
+  <header class="top">
+    <button class="round-btn" type="button" data-back aria-label="Natrag"><svg class="ico"><use href="#i-back"/></svg></button>
+    <span class="top-title">SM i DM vrijednosti</span>
+  </header>
+  <div class="scroll" id="smBody"></div>
 </section>
 
 <!-- The weekly AR rating of the department, sent to MYJYSK -->
