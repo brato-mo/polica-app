@@ -4,6 +4,7 @@ import * as store from './store.js';
 import * as docs from './docs.js';
 import * as news from './news.js';
 import * as ar from './ar.js';
+import * as smcheck from './smcheck.js';
 
 const A = window.Android;
 const $ = (s, el = document) => el.querySelector(s);
@@ -234,6 +235,7 @@ function back() {
   if (t.id === 'ar') renderAr();
   if (t.id === 'top') renderTop();
   if (t.id === 'smdm') renderSm();
+  if (t.id === 'audit') renderAudit();
   if (t.id === 'home') renderHome();
   const sc = $(`#${t.id} .scroll`);
   if (sc && t.scroll) { const y = t.scroll; sc.scrollTop = y; requestAnimationFrame(() => { sc.scrollTop = y; }); }
@@ -1872,7 +1874,7 @@ function renderSm() {
       ${succ}
     </div>`;
   }).join('');
-  box.innerHTML = `${intro}${busy}${resLine}
+  box.innerHTML = `<button class="orders-bar au-master" type="button" data-au-master>${icon('chart')}<span><b>Master provjera</b><small>Sve SM i DM vrijednosti odjela: ukinuti sa SM/DM i zamjene, SM bez prodaje, najprodavaniji bez SM</small></span><span class="go">Pokreni</span></button>${intro}${busy}${resLine}
     <div class="top-head"><p class="count-line">${m ? `Odjel ${esc(cfg().group || '5')} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
       <button class="text-btn" type="button" data-sm="reload" ${dis}>${icon('refresh')}Osvježi</button></div>
     ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Ukloni SM i DM za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM ni DM. Sve je po smjernici.</p>' : ''}
@@ -1915,6 +1917,157 @@ async function onSmClick(t) {
     `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` Za ${zero} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}${moves ? ` ${moves} ${plural(moves, 'zamjena dobija', 'zamjene dobijaju', 'zamjena dobija')} SM/DM starog broja.` : ''}</p>`,
     [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
   if (go2) smSend(items);
+}
+
+// ------------------------------------------------ Master provjera: every SM/DM value of the department checked
+
+S.au = { busy: '', edit: {}, move: {}, result: null, open: new Set(['out']) };
+
+function openAudit() {
+  S.au.edit = {};
+  S.au.move = {};
+  S.au.result = null;
+  go('audit');
+  renderAudit();
+  const a = S.user.audit;
+  if (!a || !a.list || Date.now() - a.at > 30 * 60000) loadAudit();
+}
+
+const auKeep = (x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: +x.stock || 0, sm: +x.sm || 0, dm: +x.dm || 0, cap: +x.cap || 0, sold30: +x.sold30 || 0,
+  succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null });
+
+function loadAudit() {
+  if (S.au.busy) return;
+  const ok = stCall({ mode: 'audit', cat: cfg().group || '5' }, (r) => {
+    S.au.busy = '';
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
+      S.user.audit = { at: Date.now(), list: r.res.list.slice(0, 800).map(auKeep), top: (r.res.top || []).slice(0, 40).map(auKeep) };
+      saveUser();
+    } else {
+      toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'Provjera se nije mogla učitati. Pokušaj ponovo.');
+    }
+    if (top().id === 'audit') renderAudit();
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.au.busy = 'load';
+  renderAudit();
+}
+
+function auGroups() {
+  const a = S.user.audit;
+  return a && a.list ? smcheck.check(a.list, a.top, (n) => S.index.byNum.has(n)) : null;
+}
+
+function auRow(x, gid) {
+  const dis = S.au.busy ? 'disabled' : '';
+  const mv = !!(S.au.move[x.num] && x.succ);
+  const e = mv ? { sm: 0, dm: 0 } : S.au.edit[x.num] || {};
+  const v = e.sm ?? x.sm, w = e.dm ?? x.dm;
+  const changed = mv || +v !== x.sm || +w !== x.dm;
+  const to = mv ? smMoveItems(x)[1] : null;
+  const facts = [`na stanju ${whole(x.stock)}`, `prodano 30 dana ${whole(x.sold30)}`, x.cap ? `polica ${whole(x.cap)}` : ''].filter(Boolean).join(' · ');
+  const succ = gid === 'out' && x.succ ? `<div class="sm-succ"><span>Zamjena: <b>${esc(x.succ.num)}</b> (status ${esc(x.succ.st)}) · SM ${whole(x.succ.sm)} · DM ${whole(x.succ.dm)}</span>
+      ${mv ? `<span class="sm-move-on">Prebacuje se: zamjena dobija SM ${whole(to.sm)}, DM ${whole(to.dm)}; stari broj na 0</span>` : ''}
+      ${smNeedsMove(x) || mv ? `<button class="text-btn" type="button" data-au-move="${esc(x.num)}" ${dis}>${mv ? 'Ne prebacuj' : 'Prebaci SM/DM na zamjenu'}</button>` : ''}</div>` : '';
+  return `<div class="sm-row${changed ? ' is-changed' : ''}">
+    <div class="sm-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span>
+      <span class="pills">${stPill(x.st)}${S.index.byNum.has(x.num) ? '<span class="pill">U planogramu</span>' : ''}</span>
+      <span class="sm-facts">${facts}</span></div>
+    <label class="sm-edit"><span>SM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(v)}" data-au-in="${esc(x.num)}" data-k="sm" ${dis}></label>
+    <label class="sm-edit"><span>DM</span><input type="number" inputmode="numeric" min="0" max="9999" value="${esc(w)}" data-au-in="${esc(x.num)}" data-k="dm" ${dis}></label>
+    <button class="chip" type="button" data-au-zero="${esc(x.num)}" ${dis} aria-label="SM i DM na 0">0</button>
+    ${succ}
+  </div>`;
+}
+
+/** Everything changed on the screen, as StoreFront takes it. */
+function auItems() {
+  const a = S.user.audit;
+  if (!a) return [];
+  const by = new Map([...a.list, ...(a.top || [])].map((x) => [x.num, x]));
+  const items = [];
+  for (const [n, x] of by) {
+    if (S.au.move[n] && x.succ) { items.push(...smMoveItems(x)); continue; }
+    const e = S.au.edit[n];
+    if (e && ((e.sm ?? x.sm) !== x.sm || (e.dm ?? x.dm) !== x.dm)) items.push({ num: n, sm: e.sm ?? x.sm, dm: e.dm ?? x.dm });
+  }
+  return items;
+}
+
+function auSend(items) {
+  if (!items.length || S.au.busy) return;
+  const ok = stCall({ mode: 'smset', items }, (r) => {
+    S.au.busy = '';
+    if (r.how === 'ok' && r.res) {
+      for (const n of r.res.done || []) { delete S.au.edit[n]; delete S.au.move[n]; }
+      S.au.result = { done: (r.res.done || []).length, failed: r.res.failed || [] };
+    } else {
+      S.au.result = { done: 0, failed: [], err: r.how === 'login' ? 'StoreFront traži prijavu. Učitaj provjeru ponovo da vidiš šta je promijenjeno.' : 'StoreFront nije odgovorio do kraja. Učitaj provjeru ponovo.' };
+    }
+    S.user.smdm = null; // the SM screen reads again
+    renderSmBar();
+    loadAudit(); // read back what StoreFront now has
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.au.busy = 'send';
+  renderAudit();
+}
+
+function renderAudit() {
+  const box = $('#auditBody');
+  if (!box) return;
+  const a = S.user.audit;
+  const busy = S.au.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Provjeravam sve SM i DM vrijednosti odjela u StoreFrontu… (do jedne minute)</p>'
+    : S.au.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
+  const res = S.au.result;
+  const resLine = res ? (res.err ? `<p class="ar-err">${esc(res.err)}</p>`
+    : `<p class="sm-ok">Spremljeno u StoreFront: ${res.done} ${plural(res.done, 'artikal', 'artikla', 'artikala')}.${res.failed.length ? ` Nije prošlo: ${res.failed.map((f) => esc(f.num)).join(', ')}.` : ''}</p>`) : '';
+  const head = `<div class="top-head"><p class="count-line">${a ? `Odjel ${esc(cfg().group || '5')} · ${a.list.length} ${plural(a.list.length, 'artikal', 'artikla', 'artikala')} sa SM ili DM · ${esc(ageText(a.at))}` : ''}</p>
+    <button class="text-btn" type="button" data-au="reload" ${S.au.busy ? 'disabled' : ''}>${icon('refresh')}Provjeri ponovo</button></div>`;
+  const g = auGroups();
+  if (!g) { box.innerHTML = `${busy}${resLine}${head}`; return; }
+  const n = smcheck.total(g);
+  const sum = n ? `<div class="au-sum">${smcheck.GROUPS.filter((x) => g[x.id].length).map((x) => `<button class="au-chip${x.fix ? ' is-fix' : ''}" type="button" data-au-go="${x.id}"><b>${g[x.id].length}</b>${esc(x.title)}</button>`).join('')}</div>`
+    : '<div class="mj-intro"><h3>Sve je u redu ✓</h3><p>Nema ukinutih artikala sa SM/DM, ni drugih sumnjivih vrijednosti u odjelu.</p></div>';
+  const groups = smcheck.GROUPS.filter((x) => g[x.id].length).map((x) => {
+    const open = S.au.open.has(x.id);
+    const fixAll = x.fix ? `<button class="btn btn-primary btn-block btn-small" type="button" data-au="fixout" ${S.au.busy ? 'disabled' : ''}>Riješi sve po smjernici (${g.out.length})</button>` : '';
+    return `<section class="au-group" id="au-${x.id}">
+      <button class="au-head" type="button" data-au-open="${x.id}" aria-expanded="${open}"><span><b>${esc(x.title)}</b><small>${g[x.id].length} ${plural(g[x.id].length, 'artikal', 'artikla', 'artikala')}</small></span>${icon('chev', 'chev')}</button>
+      ${open ? `<p class="au-why">${esc(x.why)}</p>${fixAll}<div class="sm-list">${g[x.id].map((y) => auRow(y, x.id)).join('')}</div>` : ''}
+    </section>`;
+  }).join('');
+  const items = auItems();
+  box.innerHTML = `${busy}${resLine}${head}${sum}${groups}
+    ${items.length ? `<div class="sm-save"><button class="btn btn-primary btn-block" type="button" data-au="save" ${S.au.busy ? 'disabled' : ''}>Spremi promjene (${items.length})</button></div>` : ''}`;
+}
+
+async function onAuClick(t) {
+  const d = t.dataset;
+  if (d.auOpen) { if (S.au.open.has(d.auOpen)) S.au.open.delete(d.auOpen); else S.au.open.add(d.auOpen); renderAudit(); return; }
+  if (d.auGo) { S.au.open.add(d.auGo); renderAudit(); const el = $(`#au-${d.auGo}`); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+  if (d.auZero) { S.au.edit[d.auZero] = { sm: 0, dm: 0 }; delete S.au.move[d.auZero]; S.au.result = null; renderAudit(); return; }
+  if (d.auMove) { if (S.au.move[d.auMove]) delete S.au.move[d.auMove]; else { S.au.move[d.auMove] = true; delete S.au.edit[d.auMove]; } S.au.result = null; renderAudit(); return; }
+  if (d.au === 'reload') { S.au.result = null; loadAudit(); return; }
+  let items = [];
+  if (d.au === 'fixout') {
+    const g = auGroups();
+    for (const x of g.out) items.push(...(smNeedsMove(x) ? smMoveItems(x) : [{ num: x.num, sm: 0, dm: 0 }]));
+    const moves = g.out.filter(smNeedsMove).length;
+    const yes = await ask(`Riješiti ${g.out.length} ${plural(g.out.length, 'ukinut artikal', 'ukinuta artikla', 'ukinutih artikala')}?`,
+      `<p>Po smjernici: SM i DM idu na 0.${moves ? ` ${moves} ${plural(moves, 'ima zamjenu', 'imaju zamjenu', 'ima zamjenu')} bez SM/DM: ${plural(moves, 'njoj se', 'njima se', 'njima se')} prebacuje SM/DM starog broja.` : ''} Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
+      [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
+    if (yes) auSend(items);
+    return;
+  }
+  if (d.au === 'save') {
+    items = auItems();
+    if (!items.length) return;
+    const yes = await ask(`Spremiti promjene za ${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')}?`,
+      `<p>${items.map((x) => `${esc(x.num)}: SM ${whole(x.sm)}, DM ${whole(x.dm)}`).slice(0, 12).join('<br>')}${items.length > 12 ? '<br>…' : ''}</p><p>Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
+      [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
+    if (yes) auSend(items);
+  }
 }
 
 // ------------------------------------------------ AR artikli: the weekly rating of the department in MYJYSK
@@ -3649,6 +3802,15 @@ function bind() {
     toast(words ? 'Riječi su spremljene.' : 'Vraćene su zadane riječi.');
   });
 
+  $('#auditBody').addEventListener('change', (ev) => {
+    const n = ev.target.dataset.auIn;
+    if (!n) return;
+    S.au.edit[n] = { ...(S.au.edit[n] || {}), [ev.target.dataset.k === 'dm' ? 'dm' : 'sm']: Math.max(0, Math.min(9999, Math.round(+ev.target.value || 0))) };
+    delete S.au.move[n];
+    S.au.result = null;
+    renderAudit();
+  });
+
   // SM screen: a typed value is kept until saved (the list is drawn again only to show the save button)
   $('#smBody').addEventListener('change', (ev) => {
     const n = ev.target.dataset.smIn;
@@ -3672,7 +3834,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3702,6 +3864,8 @@ function bind() {
     if (t.dataset.topDays) { S.topDays = +t.dataset.topDays; renderTop(); return; }
     if (t.dataset.top === 'refresh') { loadTop(); return; }
     if (t.dataset.sm || t.dataset.smZero || t.dataset.smMove) { onSmClick(t); return; }
+    if (t.hasAttribute('data-au-master')) { openAudit(); return; }
+    if (t.dataset.au || t.dataset.auOpen || t.dataset.auGo || t.dataset.auZero || t.dataset.auMove) { onAuClick(t); return; }
     if (t.dataset.stockRetry) { stockLoad(t.dataset.stockRetry, true); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }

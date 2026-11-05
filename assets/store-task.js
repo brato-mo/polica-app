@@ -171,6 +171,53 @@
     });
   }
 
+  // everything of the department that has an SM or a DM value (any status), the replacement numbers of the ones
+  // that go out, and the best sellers of the last 30 days: the material for a full check of the values
+  function audit() {
+    var cat = s(arg.cat, 10);
+    if (!/^[0-9A-Za-z]{1,10}$/.test(cat)) throw 'bad input';
+    function all(field) {
+      var out = [];
+      function page(start) {
+        var b = { storeId: store, catalogId: catalog, categories: [cat], statusCodes: ALL, smDmQuantityParameters: [{ operator: 'GT', value: 0, field: field }], start: String(start), max: '100' };
+        return req('POST', '/api/v1/article/search?include=SmDm', b).then(function (j) {
+          var l = ((j && j.articleResults) || []).map(row);
+          out = out.concat(l);
+          var total = j && j.pagingInfo ? num(j.pagingInfo.total) : 0;
+          window.__st.prog = field + ' ' + out.length + '/' + total;
+          if (l.length && out.length < total && out.length < 800) return page(start + l.length);
+          return out;
+        });
+      }
+      return page(0);
+    }
+    var list = [], top = [];
+    return all('SM').then(function (a) {
+      return all('DM').then(function (b) {
+        var seen = {};
+        list = a.concat(b).filter(function (x) { if (seen[x.num]) return false; seen[x.num] = 1; return true; });
+        var out = list.filter(function (x) { return x.st === '21' || x.st === '81'; });
+        return inBatches(out, 6, function (x) {
+          return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {
+            var m = Array.isArray(j) ? j[0] : j;
+            var c = ((m && m.substitutionChain) || []).filter(function (e) {
+              var st = s(e.statusCode, 3);
+              return /^\d{7}$/.test(s(e.articleNumber, 10)) && s(e.articleNumber, 10) !== x.num && st !== '21' && st !== '81';
+            })[0];
+            if (!c) return;
+            var d = c.smDmData || {};
+            x.succ = { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), sm: num(d.smQuantity), dm: num(d.dmQuantity), stock: num(d.stock) };
+          });
+        });
+      });
+    }).then(function () {
+      return search({ categories: [cat], statusCodes: ['01', '02', '11', '12', '31', '32', '41'], orderBy: 'quantitySoldInPeriod', orderByDirection: 'DESC' }, 40);
+    }).then(function (r) {
+      top = r.list.filter(function (a) { return a.sold30 > 0; });
+      return { list: list, top: top };
+    });
+  }
+
   function smset() {
     var items = (Array.isArray(arg.items) ? arg.items : []).slice(0, 300).filter(function (x) {
       return x && /^\d{7}$/.test(String(x.num)) && isFinite(+x.sm) && +x.sm >= 0 && +x.sm <= 9999 && isFinite(+x.dm) && +x.dm >= 0 && +x.dm <= 9999;
@@ -189,7 +236,7 @@
     return next();
   }
 
-  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset }[arg.mode];
+  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {

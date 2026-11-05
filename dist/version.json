@@ -1,7 +1,7 @@
 {
- "code": 53,
- "name": "1.52",
- "notes": "SM i DM: uz stari broj (21/81) pokazuje se zamjena (novi broj) i SM/DM se može prebaciti na nju, pojedinačno ili za sve odjednom",
- "size": 1983180,
- "sha256": "51fff6b70d3bf3533a03ee85c159ddbee65b554e6bd683d083e6047fe083432a"
+ "code": 54,
+ "name": "1.53",
+ "notes": "Master provjera SM/DM: sve vrijednosti odjela odjednom — ukinuti sa SM/DM (riješi po smjernici, s prebacivanjem na zamjene), SM bez prodaje 30 dana, najprodavaniji bez SM",
+ "size": 1987342,
+ "sha256": "63484d0fbccf750231b1356ad8f85cb311a5135d858091b10daaec26b241082d"
 }

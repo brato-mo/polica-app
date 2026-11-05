@@ -1261,3 +1261,18 @@ button.code-chip:active { transform: scale(.96); }
 .sm-succ { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13px; font-weight: 600; line-height: 1.4; }
 .sm-succ b { color: var(--ink); }
 .sm-move-on { color: var(--primary); font-weight: 700; }
+
+/* Master provjera */
+.au-master { margin-bottom: 14px; }
+.au-sum { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.au-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 700; text-align: left; }
+.au-chip b { color: var(--ink); font-size: 16px; }
+.au-chip.is-fix b { color: var(--danger); }
+.au-group { margin: 0 0 12px; }
+.au-head { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink); font: inherit; text-align: left; }
+.au-head span { display: flex; flex-direction: column; }
+.au-head b { font-size: 15px; }
+.au-head small { color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+.au-head[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.au-why { margin: 10px 2px; color: var(--ink-2); font-size: 13.5px; line-height: 1.45; }
+.au-group .btn-small { margin-bottom: 8px; }
