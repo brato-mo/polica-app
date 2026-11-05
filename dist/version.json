@@ -1,7 +1,7 @@
 {
- "code": 45,
- "name": "1.44",
- "notes": "Ispravka: artikal se traži u pravom odjelu (0501 ne miješa s 0502), označava se samo traženi artikal, nikad cijela polica",
+ "code": 46,
+ "name": "1.45",
+ "notes": "Žuti okvir obuhvata sve primjerke artikla na polici (jedan do drugog ili jedan iznad drugog), ne pola",
  "size": 1954316,
- "sha256": "d36199c1c16e1f87a40c1c4278466d1f850499b90cf156c6e0624a1003faee6b"
+ "sha256": "5a6ae2958d8fa66df8355ca6eb2eaf77be4334d2588849993c2db70ab1a8bff3"
 }
