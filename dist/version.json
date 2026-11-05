@@ -1,7 +1,7 @@
 {
- "code": 48,
- "name": "1.47",
- "notes": "AR artikli u Vijestima: ocjene 1-5 (sve na 5), gotovi komentari ispod 5, jedno dugme napravi i završi posjetu u MYJYSK",
- "size": 1966730,
- "sha256": "02a895f61b5ca1081f17ababfb64d4f06d4c4f1bfafc0a0912addc4f2d5a8da6"
+ "code": 49,
+ "name": "1.48",
+ "notes": "AR artikli: posebne gotove rečenice za svaku ocjenu (4, 3, 2, 1) i svaku temu; tvoji komentari se pamte po ocjeni",
+ "size": 1970826,
+ "sha256": "e3c15a01c5d67f5910c9df7aa10c787b022cb1b4bee365be2d3c913559544dc1"
 }

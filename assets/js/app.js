@@ -1601,6 +1601,8 @@ function onNewsClick(t) {
 // and completes it (assets/myjysk-ar.js, with his own sign-in).
 
 const arKept = () => S.user.ar || (S.user.ar = { form: null, last: null, used: {} });
+// own comments per question and score (older versions kept one list per question: those count as 4s)
+const arUsed = (k, id) => { const u = k.used[id]; return Array.isArray(u) ? { 4: u } : { ...(u || {}) }; };
 const arFormName = () => cfg().arForm || ar.DEFAULT_FORM;
 const AR_STEP = { create: 'pravljenje posjete', start: 'otvaranje posjete', answers: 'upisivanje odgovora', complete: 'završavanje posjete' };
 
@@ -1665,7 +1667,7 @@ window.onMjAr = (r) => {
     for (const q of qs) {
       const n = String((S.ar.sent.notes || {})[q.id] || '').trim();
       const sc = +((S.ar.sent.scores || {})[q.id] || 5);
-      if (n && sc < 5) k.used[q.id] = [n, ...(k.used[q.id] || []).filter((x) => x !== n)].slice(0, 3);
+      if (n && sc < 5) { const u = arUsed(k, q.id); u[sc] = [n, ...(u[sc] || []).filter((x) => x !== n)].slice(0, 3); k.used[q.id] = u; }
     }
     k.last = { at: Date.now(), id: res.id || 0, score: res.score == null ? null : res.score, form: k.form.name, status: res.status || '' };
     saveUser();
@@ -1682,7 +1684,7 @@ function arQuestion(q, i) {
   const sc = +(S.ar.scores[q.id] || 5);
   const k = arKept();
   const note = String(S.ar.notes[q.id] || '');
-  const sugg = sc < 5 && q.note ? ar.suggestions(q, k.used[q.id]) : [];
+  const sugg = sc < 5 && q.note ? ar.suggestions(q, sc, arUsed(k, q.id)) : [];
   return `<div class="ar-q${sc < 5 ? ' is-low' : ''}">
     <p class="ar-name"><span>${i + 1}.</span> ${esc(q.name)}</p>
     <div class="ar-scores" role="radiogroup" aria-label="Ocjena">${[1, 2, 3, 4, 5].map((n) => `<button class="ar-sc" type="button" role="radio" aria-checked="${sc === n}" data-ar-sc="${q.id}:${n}" ${S.ar.busy ? 'disabled' : ''}>${n}</button>`).join('')}</div>
@@ -1731,6 +1733,10 @@ function renderAr() {
 function onArClick(t) {
   if (t.dataset.arSc) {
     const [id, n] = t.dataset.arSc.split(':');
+    const q = ar.questions(arKept().form).find((x) => String(x.id) === id);
+    const was = +(S.ar.scores[id] || 5);
+    // a ready-made sentence picked for the old score does not fit the new one
+    if (q && was < 5 && ar.suggestions(q, was, arUsed(arKept(), q.id)).includes(S.ar.notes[id])) delete S.ar.notes[id];
     S.ar.scores[id] = +n;
     renderAr();
     if (+n < 5) { const el = document.querySelector(`[data-ar-note="${id}"]`); if (el && !el.value) el.closest('.ar-q').scrollIntoView({ block: 'nearest' }); }

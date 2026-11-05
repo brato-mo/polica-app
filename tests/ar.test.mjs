@@ -19,12 +19,17 @@ test('rating questions carry the comment field that follows them', () => {
   assert.deepEqual(qs.map((q) => [q.id, q.note && q.note.id]), [[1, 2], [3, 4], [5, null]]);
 });
 
-test('ready-made comments fit the question; own earlier comments come first', () => {
+test('ready-made comments fit the question and the score; own earlier comments come first', () => {
   const qs = questions(form);
-  assert.match(suggestions(qs[0])[0], /cjenovn|cijen/i);
-  assert.match(suggestions(qs[1]).join(' '), /clearance/i, '"Procijenite" is not a question about prices');
-  assert.match(suggestions(qs[2]).join(' '), /VM/);
-  assert.equal(suggestions(qs[0], ['Moj komentar.'])[0], 'Moj komentar.');
+  assert.match(suggestions(qs[0], 4)[0], /cjenovn|cijen/i);
+  assert.match(suggestions(qs[1], 3).join(' '), /clearance/i, '"Procijenite" is not a question about prices');
+  assert.match(suggestions(qs[2], 2).join(' '), /VM/);
+  const by = [1, 2, 3, 4].map((n) => suggestions(qs[0], n));
+  for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) assert.equal(by[a].filter((x) => by[b].includes(x)).length, 0, 'every score has its own sentences');
+  assert.equal(suggestions(qs[0], 2, { 2: ['Moj komentar.'] })[0], 'Moj komentar.');
+  assert.ok(!suggestions(qs[0], 4, { 2: ['Moj komentar.'] }).includes('Moj komentar.'));
+  assert.equal(suggestions(qs[0], 4, ['Stari komentar.'])[0], 'Stari komentar.');
+  assert.ok(suggestions({ name: 'Nešto sasvim drugo' }, 1).length >= 2);
 });
 
 test('all fives: only the scores are sent', () => {
