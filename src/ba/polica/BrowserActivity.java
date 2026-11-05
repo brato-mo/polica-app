@@ -59,7 +59,7 @@ public class BrowserActivity extends Activity {
     static final String EXTRA_PATH = "path";
     static final String EXTRA_JSON = "json";
     static final String ATTACHMENT_FILE = "attachment.json";
-    private static final Pattern SAFE_PATH = Pattern.compile("/ui/(tasks/[a-z]+|news/articles|knowledge-bases/\\d{1,6}/topics/\\d{1,8}/articles)/\\d{1,14}");
+    private static final Pattern SAFE_PATH = Pattern.compile("/ui/(tasks/[a-z]+|news/articles|store-visits|knowledge-bases/\\d{1,6}/topics/\\d{1,8}/articles)/\\d{1,14}");
     private static final Pattern ARTICLE = Pattern.compile("^/ui/news/articles/\\d{1,14}.*");
     private static final int[] ZOOM = {100, 115, 130, 150};
 

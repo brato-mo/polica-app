@@ -1,7 +1,7 @@
 {
- "code": 47,
- "name": "1.46",
- "notes": "Stranice planograma se spremaju kao slike: cijeli planogram se otvara i lista odmah, bez čekanja na crtanje",
- "size": 1958412,
- "sha256": "5a41c870e94d0d2d7cd6a6b7678a11637cbff0601d5e5c2e15a16e969d60acc5"
+ "code": 48,
+ "name": "1.47",
+ "notes": "AR artikli u Vijestima: ocjene 1-5 (sve na 5), gotovi komentari ispod 5, jedno dugme napravi i završi posjetu u MYJYSK",
+ "size": 1966730,
+ "sha256": "02a895f61b5ca1081f17ababfb64d4f06d4c4f1bfafc0a0912addc4f2d5a8da6"
 }

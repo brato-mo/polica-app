@@ -3,6 +3,7 @@ import * as core from './core.js';
 import * as store from './store.js';
 import * as docs from './docs.js';
 import * as news from './news.js';
+import * as ar from './ar.js';
 
 const A = window.Android;
 const $ = (s, el = document) => el.querySelector(s);
@@ -20,6 +21,7 @@ const S = {
   tried: new Set(), // barcodes already asked in StoreFront this session
   storeCb: null,
   mode: 'plan', // home tab: 'plan' (planograms), 'orders' (customer orders) or 'news' (MYJYSK tasks and news)
+  ar: { busy: '', scores: {}, notes: {}, err: null, done: null }, // AR screen: what is being done, the chosen scores and comments
   mj: { busy: false, open: new Set(), loc: 'open', more: false }, // Vijesti screen: reading now, opened news, filter of the store's tasks
   planMore: new Set(), // "<plan id>|<status>": cards whose whole row of article numbers is open on the Planogrami screen
 };
@@ -229,6 +231,7 @@ function back() {
   if (t.id === 'attach') renderAttach();
   if (t.id === 'minus') renderMinus();
   if (t.id === 'plans') renderPlans();
+  if (t.id === 'ar') renderAr();
   if (t.id === 'home') renderHome();
   const sc = $(`#${t.id} .scroll`);
   if (sc && t.scroll) { const y = t.scroll; sc.scrollTop = y; requestAnimationFrame(() => { sc.scrollTop = y; }); }
@@ -1062,6 +1065,7 @@ window.onMyjysk = (r) => {
   }
   renderHome();
   if ($('#settings').classList.contains('is-active')) renderSettings();
+  if (S.ar.after && r && r.how !== 'cancelled') { S.ar.after = false; if (r.how === 'ok' && top().id === 'ar') arLoad(); }
   if (after === 'plans') {
     if (r && r.how === 'ok') startPlanDownload();
     else if (r && r.how === 'login') {
@@ -1522,6 +1526,7 @@ function renderNews() {
   const locShown = (S.mj.loc === 'over' ? locOver : S.mj.loc === 'all' ? loc : locOpen).slice().sort(news.byDue);
   const newsShown = S.mj.more ? st.news : st.news.slice(0, NEWS_SHOWN);
   box.innerHTML = `${stateLine}${login}
+  ${arBar()}
   ${impSection(st)}
   <section class="mj-sec"><div class="sec-head"><h2>Za mene</h2><small>${mine.length}${overMine ? ` · ${overMine} isteklo` : ''}</small></div>
     ${mine.length ? `<div class="list">${mine.map((t) => taskRow(st, t, { role: true })).join('')}</div>` : '<p class="empty">Nema otvorenih zadataka za tebe.</p>'}</section>
@@ -1580,6 +1585,7 @@ function onNewsClick(t) {
     return;
   }
   const a = t.dataset.mj;
+  if (a === 'ar') { openAr(); return; }
   if (a === 'refresh') refreshMyjysk(false);
   else if (a === 'login') refreshMyjysk(true);
   else if (a === 'more') { S.mj.more = !S.mj.more; renderNews(); }
@@ -1587,6 +1593,159 @@ function onNewsClick(t) {
   else if (a.startsWith('loc-')) { S.mj.loc = a.slice(4); renderNews(); }
 }
 
+
+// ------------------------------------------------ AR artikli: the weekly rating of the department in MYJYSK
+//
+// The employee rates his department 1-5 per question; everything starts at 5. Under 5 MYJYSK wants a comment: he
+// picks a ready-made sentence or writes his own. One button then makes the visit in MYJYSK, fills in his answers
+// and completes it (assets/myjysk-ar.js, with his own sign-in).
+
+const arKept = () => S.user.ar || (S.user.ar = { form: null, last: null, used: {} });
+const arFormName = () => cfg().arForm || ar.DEFAULT_FORM;
+const AR_STEP = { create: 'pravljenje posjete', start: 'otvaranje posjete', answers: 'upisivanje odgovora', complete: 'završavanje posjete' };
+
+function arBar() {
+  if (!mjOn()) return '';
+  const k = arKept();
+  const done = ar.doneThisWeek(k.last, Date.now());
+  const sub = done ? `Urađeno ove sedmice${k.last.score != null ? `, rezultat ${Math.round(k.last.score)}%` : ''}` : 'Nije urađeno ove sedmice';
+  return `<button class="orders-bar ar-bar${done ? ' is-done' : ''}" type="button" data-mj="ar">${icon('list')}<span><b>AR artikli</b><small>${esc(sub)}</small></span><span class="go">${done ? 'Otvori' : 'Ocijeni'}</span></button>`;
+}
+
+function openAr() {
+  S.ar.err = null;
+  S.ar.done = null;
+  if (!S.ar.busy) { S.ar.scores = {}; S.ar.notes = {}; }
+  go('ar');
+  renderAr();
+  if (!S.ar.busy) arLoad();
+}
+
+function arCall(arg) {
+  try { A.myjyskAr(JSON.stringify(arg)); return true; } catch (e) { return false; }
+}
+
+function arLoad() {
+  if (!arCall({ mode: 'form', form: arFormName() })) { S.ar.err = { kind: 'old' }; renderAr(); return; }
+  S.ar.busy = 'form';
+  renderAr();
+}
+
+function arSend() {
+  const k = arKept();
+  const qs = ar.questions(k.form);
+  const miss = ar.missing(qs, S.ar.scores, S.ar.notes);
+  if (miss.length) {
+    toast('Za ocjenu ispod 5 treba komentar.');
+    const el = document.querySelector(`[data-ar-note="${miss[0].id}"]`);
+    if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); }
+    return;
+  }
+  let answers;
+  try { answers = ar.answers(qs, S.ar.scores, S.ar.notes); } catch (e) { toast('Obrazac se promijenio. Osvježi ga pa pokušaj ponovo.'); return; }
+  if (!navigator.onLine) { toast('Nema internet veze.'); return; }
+  if (!arCall({ mode: 'send', guid: k.form.guid, answers })) { toast('Ova verzija aplikacije to ne može. Ažuriraj je.'); return; }
+  S.ar.busy = 'send';
+  S.ar.sent = { scores: { ...S.ar.scores }, notes: { ...S.ar.notes } };
+  renderAr();
+}
+
+window.onMjAr = (r) => {
+  const was = S.ar.busy;
+  S.ar.busy = '';
+  const k = arKept();
+  if (r && r.how === 'ok' && was === 'form') {
+    const res = r.res || {};
+    k.forms = res.forms || k.forms || [];
+    if (res.form) { k.form = res.form; S.ar.err = null; } else S.ar.err = { kind: 'noform' };
+    saveUser();
+  } else if (r && r.how === 'ok' && was === 'send') {
+    const res = r.res || {};
+    const qs = ar.questions(k.form);
+    for (const q of qs) {
+      const n = String((S.ar.sent.notes || {})[q.id] || '').trim();
+      const sc = +((S.ar.sent.scores || {})[q.id] || 5);
+      if (n && sc < 5) k.used[q.id] = [n, ...(k.used[q.id] || []).filter((x) => x !== n)].slice(0, 3);
+    }
+    k.last = { at: Date.now(), id: res.id || 0, score: res.score == null ? null : res.score, form: k.form.name, status: res.status || '' };
+    saveUser();
+    S.ar.done = k.last;
+    S.ar.err = null;
+  } else {
+    S.ar.err = { kind: r && r.how === 'login' ? 'login' : 'error', was, step: r && r.step, id: r && r.id, err: r && r.err };
+  }
+  if (top().id === 'ar') renderAr();
+  if (S.mode === 'news') renderNews();
+};
+
+function arQuestion(q, i) {
+  const sc = +(S.ar.scores[q.id] || 5);
+  const k = arKept();
+  const note = String(S.ar.notes[q.id] || '');
+  const sugg = sc < 5 && q.note ? ar.suggestions(q, k.used[q.id]) : [];
+  return `<div class="ar-q${sc < 5 ? ' is-low' : ''}">
+    <p class="ar-name"><span>${i + 1}.</span> ${esc(q.name)}</p>
+    <div class="ar-scores" role="radiogroup" aria-label="Ocjena">${[1, 2, 3, 4, 5].map((n) => `<button class="ar-sc" type="button" role="radio" aria-checked="${sc === n}" data-ar-sc="${q.id}:${n}" ${S.ar.busy ? 'disabled' : ''}>${n}</button>`).join('')}</div>
+    ${sc < 5 && q.note ? `<div class="ar-sugg">${sugg.map((t) => `<button class="chip" type="button" aria-pressed="${note === t}" data-ar-pick="${q.id}" data-text="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    <textarea class="ar-note" rows="2" maxlength="1000" placeholder="Zašto ${sc}? Izaberi gore ili napiši svoje." data-ar-note="${q.id}" ${S.ar.busy ? 'disabled' : ''}>${esc(note)}</textarea>` : ''}
+  </div>`;
+}
+
+function renderAr() {
+  const box = $('#arBody');
+  if (!box) return;
+  const k = arKept();
+  const qs = ar.questions(k.form);
+  const e = S.ar.err;
+  let msg = '';
+  if (S.ar.busy === 'form' && !qs.length) msg = '<div class="mj-state"><span><i class="mj-busy"></i>Učitavam obrazac iz MYJYSK…</span></div>';
+  else if (S.ar.busy === 'form') msg = '<div class="mj-state"><span><i class="mj-busy"></i>Provjeravam obrazac u MYJYSK…</span></div>';
+  if (e && e.kind === 'login') msg = `<button class="orders-bar" type="button" data-ar="login">${icon('info')}<span><b>Prijavi se ponovo u MYJYSK</b><small>Prijava je istekla.${e.was === 'send' ? ' Ništa nije poslano.' : ''}</small></span><span class="go">Prijava</span></button>`;
+  else if (e && e.kind === 'noform') msg = `<p class="ar-err">U MYJYSK nema obrasca „${esc(arFormName())}". Izaberi svoj obrazac dolje.</p>`;
+  else if (e && e.kind === 'old') msg = '<p class="ar-err">Ova verzija aplikacije to ne može. Ažuriraj je.</p>';
+  else if (e && e.was === 'send') {
+    msg = e.id
+      ? `<div class="ar-err"><b>Nije završeno do kraja</b> (zapelo kod: ${esc(AR_STEP[e.step] || e.step || 'nepoznato')}). Posjeta je napravljena u MYJYSK, otvori je i završi tamo, da ne bude dvije.<br><button class="text-btn" type="button" data-mj-open="/ui/store-visits/${+e.id}">Otvori u MYJYSK</button></div>`
+      : `<div class="ar-err"><b>Nije poslano.</b> ${e.err === 'lost' || e.err === 'timeout' ? 'MYJYSK nije odgovorio na vrijeme. Prije ponovnog slanja pogledaj u MYJYSK (Store Visit) da li je posjeta ipak napravljena.' : 'MYJYSK je vratio grešku. Pokušaj ponovo za koji minut.'}</div>`;
+  } else if (e) msg = '<p class="ar-err">MYJYSK nije odgovorio. Prikazan je zadnji učitani obrazac.</p>';
+  const d = S.ar.done;
+  if (d) {
+    box.innerHTML = `<div class="mj-intro ar-ok"><h3>AR artikli završeni ✓</h3>
+      <p>Posjeta „${esc(d.form)}" je napravljena i završena u MYJYSK${d.score != null ? `, rezultat ${Math.round(d.score)}%` : ''}.</p>
+      ${d.id ? `<button class="btn btn-quiet btn-block" type="button" data-mj-open="/ui/store-visits/${+d.id}">Pogledaj u MYJYSK</button>` : ''}</div>`;
+    return;
+  }
+  const last = k.last && ar.doneThisWeek(k.last, Date.now()) ? `<p class="ar-note-top">Ove sedmice je već urađeno (${new Date(k.last.at).getDate()}.${new Date(k.last.at).getMonth() + 1}.). Ponovno slanje pravi novu posjetu.</p>` : '';
+  const forms = (k.forms || []).length ? `<label class="ar-form">Obrazac <select data-ar="form" ${S.ar.busy ? 'disabled' : ''}>${k.forms.map((f) => `<option ${f.name === arFormName() ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label>` : '';
+  if (!qs.length) {
+    box.innerHTML = `${msg}${forms}${S.ar.busy ? '' : '<button class="btn btn-quiet btn-block" type="button" data-ar="reload">Učitaj ponovo</button>'}`;
+    return;
+  }
+  const low = qs.filter((q) => +(S.ar.scores[q.id] || 5) < 5).length;
+  box.innerHTML = `${msg}${last}${forms}
+    <p class="ar-hint">Sve je na 5. Promijeni samo ono što nije za 5 i izaberi zašto.</p>
+    ${qs.map(arQuestion).join('')}
+    <button class="btn btn-primary btn-block ar-send" type="button" data-ar="send" ${S.ar.busy ? 'disabled' : ''}>${S.ar.busy === 'send' ? '<i class="mj-busy"></i>Šaljem u MYJYSK…' : `Završi AR artikle${low ? ` (${low} ispod 5)` : ''}`}</button>`;
+}
+
+function onArClick(t) {
+  if (t.dataset.arSc) {
+    const [id, n] = t.dataset.arSc.split(':');
+    S.ar.scores[id] = +n;
+    renderAr();
+    if (+n < 5) { const el = document.querySelector(`[data-ar-note="${id}"]`); if (el && !el.value) el.closest('.ar-q').scrollIntoView({ block: 'nearest' }); }
+    return;
+  }
+  if (t.dataset.arPick) {
+    S.ar.notes[t.dataset.arPick] = t.dataset.text;
+    renderAr();
+    return;
+  }
+  const a = t.dataset.ar;
+  if (a === 'send') arSend();
+  else if (a === 'reload') arLoad();
+  else if (a === 'login') { S.ar.err = null; S.ar.after = true; refreshMyjysk(true); }
+}
 
 // ------------------------------------------------ planograms from MYJYSK
 
@@ -3141,9 +3300,21 @@ function bind() {
     toast(words ? 'Riječi su spremljene.' : 'Vraćene su zadane riječi.');
   });
 
+  // AR screen: the comments are kept as they are typed, the form can be changed
+  $('#arBody').addEventListener('input', (ev) => { const n = ev.target.dataset.arNote; if (n) S.ar.notes[n] = ev.target.value; });
+  $('#arBody').addEventListener('change', (ev) => {
+    if (ev.target.dataset.ar !== 'form') return;
+    setCfg({ arForm: ev.target.value });
+    arKept().form = null;
+    S.ar.scores = {};
+    S.ar.notes = {};
+    saveUser();
+    arLoad();
+  });
+
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3157,6 +3328,7 @@ function bind() {
     if (t.dataset.openPlan) { viewer.open(t.dataset.openPlan, +t.dataset.page || 0); return; }
     if (t.dataset.openClear) { openClearance(); return; }
     if (t.dataset.mj || t.dataset.mjOpen || t.dataset.mjX) { onNewsClick(t); return; }
+    if (t.dataset.ar || t.dataset.arSc || t.dataset.arPick) { if (t.tagName !== 'SELECT') onArClick(t); return; }
     if (t.hasAttribute('data-plcheck')) { checkPlans(); return; }
     if (t.dataset.ploff) { const off = { ...planOff(), [t.dataset.ploff]: !planOff()[t.dataset.ploff] }; setCfg({ plOff: off }); renderSettings(); return; }
     if (t.dataset.codesMore) {

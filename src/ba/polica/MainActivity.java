@@ -1109,6 +1109,22 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** The weekly AR rating in MYJYSK (see assets/myjysk-ar.js): reads the form or sends the answers. Answer: window.onMjAr. */
+        @JavascriptInterface
+        public void myjyskAr(final String argJson) {
+            ui.post(new Runnable() {
+                @Override
+                public void run() {
+                    MyjyskTask.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), argJson, new MyjyskTask.Callback() {
+                        @Override
+                        public void done(JSONObject answer) {
+                            runJs("window.onMjAr&&onMjAr(" + answer + ")");
+                        }
+                    });
+                }
+            });
+        }
+
         /** Opens one MYJYSK task or news article ("/ui/tasks/distrtask/123", "/ui/news/articles/456") for reading. */
         @JavascriptInterface
         public void myjyskOpen(final String path) {

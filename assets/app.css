@@ -1173,3 +1173,27 @@ button.code-chip:active { transform: scale(.96); }
 .gt-note { display: flex; gap: 10px; align-items: flex-start; margin-top: 18px; font-size: 13px; line-height: 1.45; color: var(--ink-2, #596072); }
 .gt-note i { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--soft, #e8edff); color: var(--primary, #2b50e6); font-style: normal; font-weight: 800; font-size: 12px; display: grid; place-items: center; margin-top: 1px; }
 .gt-later { margin: auto auto 0; padding: 36px 8px 8px; border: 0; background: none; font: inherit; font-size: 15px; color: #8a91a3; font-weight: 700; }
+
+/* AR artikli: the weekly rating of the department */
+#arBody { padding-bottom: 32px; }
+.ar-bar.is-done .ico { color: var(--ink-3); }
+.ar-hint, .ar-note-top { margin: 0 2px 14px; color: var(--ink-2); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.ar-err { margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--danger); font-size: 14px; font-weight: 600; line-height: 1.45; }
+.ar-err b { color: var(--ink); }
+.ar-form { display: flex; align-items: center; gap: 10px; margin: 0 2px 14px; color: var(--ink-2); font-size: 13.5px; font-weight: 700; }
+.ar-form select { flex: 1; min-height: 40px; padding: 0 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; }
+.ar-q { margin: 0 0 12px; padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-1); }
+.ar-q.is-low { box-shadow: var(--shadow-1), inset 3px 0 0 var(--danger); }
+.ar-name { margin: 0 0 10px; font-size: 15px; font-weight: 700; line-height: 1.35; }
+.ar-name span { color: var(--ink-3); }
+.ar-scores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.ar-sc { min-height: 46px; border: 1.5px solid var(--line); border-radius: 12px; background: none; color: var(--ink-2); font: inherit; font-size: 18px; font-weight: 800; }
+.ar-sc[aria-checked="true"] { border-color: var(--primary); background: var(--primary); color: #fff; }
+.is-low .ar-sc[aria-checked="true"] { border-color: var(--danger); background: var(--danger); }
+.ar-sugg { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 8px; }
+.ar-sugg .chip { min-height: 0; padding: 9px 12px; border-radius: 12px; text-align: left; font-size: 13.5px; line-height: 1.35; }
+.ar-note { display: block; box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: none; color: var(--ink); font: inherit; font-size: 14.5px; resize: vertical; }
+.ar-note:focus { outline: none; border-color: var(--primary); }
+.ar-send { margin-top: 8px; min-height: 54px; font-size: 16px; }
+.ar-send .mj-busy { margin-right: 8px; }
+.ar-ok h3 { color: var(--ink); }
