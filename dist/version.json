@@ -1,7 +1,7 @@
 {
- "code": 61,
- "name": "1.59",
- "notes": "Brže: uvoz planograma, StoreFront poslovi (topla stranica, najviše 2 odjednom), rasprodaja namještaja u dvije pretrage; trajanje poslova u dijagnostici",
- "size": 2020388,
- "sha256": "0da80b1fc365589c4fe4df49de2b8994fc02746267d12f81123234c878135fa5"
+ "code": 62,
+ "name": "1.60",
+ "notes": "Slike iz StoreFronta za artikle koji nisu u tvojim planogramima (skeniranje, rasprodaja, najprodavaniji, Minus lista); dodir na sliku je uveća",
+ "size": 2024484,
+ "sha256": "1afb9410ecab81688437b701d0bac8f51fd0523f54cab48ba7ceda75af10b749"
 }
