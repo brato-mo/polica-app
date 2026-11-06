@@ -1073,6 +1073,12 @@ public class MainActivity extends Activity {
             }
         }
 
+        /** Pictures from StoreFront for articles in no planogram: [{num, url}], answer window.onSfPictures. */
+        @JavascriptInterface
+        public void fetchSfPictures(String list) {
+            SfPictures.fetch(MainActivity.this, list);
+        }
+
         @JavascriptInterface
         public void removeThumbs(String planId) {
             if (!safe(planId)) return;

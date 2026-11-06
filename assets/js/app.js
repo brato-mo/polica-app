@@ -189,6 +189,104 @@ function thumb(num, cls = '') {
   return `<span class="thumb ${cls}">${src ? `<img src="${src}" alt="" loading="lazy" decoding="async">` : icon('box')}</span>`;
 }
 
+// ------------------------------------------- pictures from StoreFront (articles in no planogram)
+// StoreFront names the article's picture (read only), the phone fetches it from JYSK's own image server and keeps it:
+// sf-pics.json = { num: { f: file name | '' (StoreFront has none), at } }. A picture is asked for once; "none" is
+// asked again after a week. Nothing is asked without a StoreFront sign-in.
+const SF_DIR = 'sf-slike';
+let sfMap = null;
+const sfPend = new Set();
+let sfBusy = false, sfTimer = 0, sfPause = 0;
+function sfPics() {
+  if (!sfMap) { sfMap = store.read('sf-pics.json', {}) || {}; if (typeof sfMap !== 'object' || Array.isArray(sfMap)) sfMap = {}; }
+  return sfMap;
+}
+const sfSrc = (num) => { const p = sfPics()[num]; return p && p.f ? `/files/thumbs/${SF_DIR}/${encodeURIComponent(p.f)}` : null; };
+
+/** Thumb of an article that may be in no planogram: its planogram picture, else StoreFront's (asked for if missing). */
+function sfThumb(num) {
+  if (!/^\d{7}$/.test(String(num || ''))) return `<span class="thumb">${icon('box')}</span>`;
+  const own = pictureOf(num);
+  if (own) return thumb(num);
+  const src = sfSrc(num);
+  if (src) return `<span class="thumb thumb-sf" data-pic="${esc(num)}" data-big="${esc(num)}"><img src="${src}" alt="" loading="lazy" decoding="async"></span>`;
+  return `<span class="thumb" data-pic="${esc(num)}" data-want="1">${icon('box')}</span>`;
+}
+
+// a picture is asked for only once its row is on the screen (a long Rasprodaja list does not ask for hundreds)
+const sfSeen = 'IntersectionObserver' in window
+  ? new IntersectionObserver((es) => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      sfSeen.unobserve(e.target);
+      if (e.target.dataset.want) sfWant(e.target.dataset.pic);
+    }
+  }, { rootMargin: '200px' })
+  : null;
+function sfWatch(root) {
+  for (const el of root.querySelectorAll ? root.querySelectorAll('[data-want]') : []) {
+    if (sfSeen) sfSeen.observe(el); else sfWant(el.dataset.pic);
+  }
+}
+new MutationObserver((ms) => {
+  for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { if (n.dataset && n.dataset.want) sfWatch(n.parentNode || n); else sfWatch(n); }
+}).observe(document.documentElement, { childList: true, subtree: true });
+
+function sfWant(num) {
+  const p = sfPics()[num];
+  if (p && (p.f || Date.now() - (p.at || 0) < 7 * 86400000)) return;
+  if (!A.fetchSfPictures || !A.storeTask) return;
+  sfPend.add(num);
+  clearTimeout(sfTimer);
+  sfTimer = setTimeout(sfAsk, 600);
+}
+
+function sfAsk() {
+  if (sfBusy || !sfPend.size || Date.now() < sfPause) return;
+  const nums = [...sfPend].slice(0, 40);
+  nums.forEach((n) => sfPend.delete(n));
+  sfBusy = true;
+  const ok = stCall({ mode: 'pics', nums }, (r) => {
+    if (r.how !== 'ok' || !r.res) {
+      sfBusy = false;
+      nums.forEach((n) => sfPend.add(n));
+      sfPause = Date.now() + 5 * 60000; // not signed in or no connection: again in a few minutes, not in a loop
+      return;
+    }
+    const list = (r.res.pics || []).map((x) => ({ num: x.num, url: x.m || x.s || '' }));
+    if (!list.length) { sfBusy = false; sfAsk(); return; }
+    A.fetchSfPictures(JSON.stringify(list));
+  });
+  if (!ok) { sfBusy = false; nums.forEach((n) => sfPend.add(n)); }
+}
+
+window.onSfPictures = (list) => {
+  sfBusy = false;
+  const m = sfPics();
+  for (const x of list || []) {
+    if (!/^\d{7}$/.test(String(x.num))) continue;
+    m[x.num] = { f: String(x.file || ''), at: Date.now() };
+    const src = sfSrc(x.num);
+    if (!src) continue;
+    for (const el of document.querySelectorAll(`[data-pic="${x.num}"]`)) {
+      el.classList.add('thumb-sf');
+      el.removeAttribute('data-want');
+      el.dataset.big = x.num;
+      el.innerHTML = `<img src="${src}" alt="" decoding="async">`;
+    }
+  }
+  store.write('sf-pics.json', m);
+  if (sfPend.size) setTimeout(sfAsk, 300);
+};
+
+function sfBig(num, el) {
+  const src = sfSrc(num);
+  if (!src) return;
+  const row = el && el.closest('.item');
+  const nm = nameOf(num) || (row && row.querySelector('.item-name') ? row.querySelector('.item-name').textContent : '');
+  openSheet({ title: `${num} ${nm || ''}`.trim(), body: `<div class="sf-big"><img src="${src}" alt=""></div><p class="hint">Slika iz StoreFronta.</p>`, actions: [{ label: 'Zatvori', onClick: closeSheet }] });
+}
+
 const isFav = (num) => (S.user.favs || []).includes(num);
 function toggleFav(num) {
   const f = S.user.favs || [];
@@ -594,7 +692,7 @@ function clrRowFurn(x, xm) {
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.groupName].filter(Boolean).join(' · ');
   return `<div class="clr-furn${hidden ? ' is-hidden' : ''}">
     <button class="item clr-item" type="button" data-store="${esc(x.num)}">
-      ${thumb(x.num)}
+      ${sfThumb(x.num)}
       <span class="item-main">
         <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${shown ? `<span class="pill pill-dm">Na izlogu · DM ${whole(x.dm)}</span>` : ''}${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
         <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
@@ -641,7 +739,7 @@ function clrRow(x, xm) {
   const free = x.free !== x.stock ? ` (slobodno ${whole(x.free)})` : '';
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.dd && !x.dd.endsWith('-9998') ? `DD ${dmy(x.dd)}` : ''].filter(Boolean).join(' · ');
   return `<button class="item clr-item" type="button" data-store="${esc(x.num)}">
-    ${thumb(x.num)}
+    ${sfThumb(x.num)}
     <span class="item-main">
       <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
       <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
@@ -1487,7 +1585,7 @@ function minusRow(x) {
     : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
   const line = `<span class="store-line minus-qty">${qty}${x.st ? ` · status ${esc(x.st)}` : ''}${x.blocked ? ` · blokirano ${esc(mq(x.blocked))}` : ''}</span>`;
   if (S.index.byNum.has(x.num)) return itemRow(x.num, { sub: `${sub}${line}` });
-  return `<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main">
+  return `<div class="item item-static">${sfThumb(x.num)}<span class="item-main">
     <span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
     ${sub}<span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
 }
@@ -1783,7 +1881,7 @@ function attRow(r) {
   const line = bits ? `<span class="store-line">${bits}</span>` : '';
   if (/^\d{7}$/.test(num) && S.index.byNum.has(num)) return itemRow(num, { sub: line });
   const nm = A2.name >= 0 ? r[A2.name] : '';
-  return `<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main">
+  return `<div class="item item-static">${num ? sfThumb(num) : `<span class="thumb">${icon('box')}</span>`}<span class="item-main">
     <span class="code">${esc(num || r.filter(Boolean).slice(0, 1).join(''))}</span><span class="item-name">${esc(nm) || 'Bez naziva'}</span>
     <span class="pills">${num ? '<span class="pill pill-muted">Nije u tvojim planogramima</span>' : ''}${num && ordersOf(num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${line}</span></div>`;
 }
@@ -2147,7 +2245,7 @@ function renderTop() {
     const sub = `<span class="top-sold"><b>${whole(x[key])}</b> prodano · na stanju ${whole(x.stock)}${x.st !== '11' ? ` · status ${esc(x.st)}` : ''}</span>`;
     const rank = `<span class="top-rank">${i + 1}</span>`;
     if (S.index.byNum.has(x.num)) return `<div class="top-row">${rank}${itemRow(x.num, { sub })}</div>`;
-    return `<div class="top-row">${rank}<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span></span>${sub}</span></div></div>`;
+    return `<div class="top-row">${rank}<div class="item item-static">${sfThumb(x.num)}<span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name)}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span></span>${sub}</span></div></div>`;
   });
   box.innerHTML = `${head}${deptChips('top')}${busy}
     <p class="count-line">${esc(deptName())} · ${days === 7 ? 'zadnjih 7 dana (iz povijesti zalihe najprodavanijih)' : 'zadnjih 30 dana (StoreFront)'} · ${esc(ageText(t.at))}</p>
@@ -3307,7 +3405,7 @@ function renderMissing(code) {
     const rows = res.map((x, i) => {
       const lead = i === 0 && res.length > 1 ? '<span class="pill">Najbolji pogodak</span>' : '';
       if (S.index.byNum.has(x.num)) return itemRow(x.num, { attr: 'data-link', sub: `${lead ? `<span class="pills">${lead}</span>` : ''}${storeLine(x)}` });
-      return `<div class="item item-static"><span class="thumb">${icon('box')}</span><span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name) || 'Bez naziva'}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${storeLine(x)}</span></div>`;
+      return `<div class="item item-static">${sfThumb(x.num)}<span class="item-main"><span class="code">${esc(x.num)}</span><span class="item-name">${esc(x.name) || 'Bez naziva'}</span><span class="pills"><span class="pill pill-muted">Nije u tvojim planogramima</span>${ordersOf(x.num).length ? '<span class="pill pill-order">Naručio kupac</span>' : ''}</span>${storeLine(x)}</span></div>`;
     });
     const ord = res.map((x, i) => (ordersOf(x.num).length
       ? ordersBlock(x.num, { label: `${x.num} ${x.name || ''}`.trim() })
@@ -4346,8 +4444,9 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-sim],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-sim],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],[data-big],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
     if (!t) return;
+    if (t.dataset.big) { sfBig(t.dataset.big, t); return; }
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
       toggleFav(t.dataset.fav);

@@ -8,6 +8,7 @@
 //   { mode: 'smset', items: [{ num, sm, dm }] }  saves these SM/DM values (only what the employee confirmed)
 //   { mode: 'me' }                  who the employee is (name, number), to keep in the app's own settings
 //   { mode: 'opcheck', items, since }  read only: stock history and Minus lista after a sending with unknown outcome
+//   { mode: 'pics', nums }  read only: the picture addresses of these articles (at most 40)
 // Only 'smset' changes anything. The result is left in window.__st for the app to pick up.
 (function () {
   if (window.__st && window.__st.state === 'busy') return;
@@ -338,7 +339,24 @@
     });
   }
 
-  var run = { me: me, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
+  // the pictures StoreFront shows for these articles (read only): the small and the medium picture of JYSK's own
+  // image server, for articles that are not in any of the employee's planograms
+  function pics() {
+    var nums = (Array.isArray(arg.nums) ? arg.nums : []).map(function (n) { return s(n, 10); }).filter(function (n) { return /^\d{7}$/.test(n); }).slice(0, 40);
+    var ok = function (u) {
+      u = s(u, 200);
+      if (u.indexOf('//') === 0) u = 'https:' + u;
+      return /^https:\/\/(resources|cdn\d?)\.jysk\.com\/getimage\/[a-z0-9.]{1,20}\/\d{1,12}$/.test(u) ? u : '';
+    };
+    return inBatches(nums, 4, function (n) {
+      return get('/api/v1/article/details?articleId=' + n + '&storeId=' + encodeURIComponent(store) + '&catalogId=' + encodeURIComponent(catalog)).then(function (j) {
+        var b = (j && j.basicArticleData) || {};
+        return { num: n, s: ok(b.thumbnailUrl), m: ok(b.webPictureUrl) };
+      });
+    }).then(function (l) { return { pics: l.filter(Boolean) }; });
+  }
+
+  var run = { me: me, pics: pics, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {
