@@ -245,6 +245,41 @@
     });
   }
 
+  // the articles to sell out (status 21 / 81) of these groups that the store still has: in stock, or on display (DM)
+  // with nothing left in stock. With price, date of the status and the replacement number that is still sold.
+  function clear() {
+    var cs = cats.length ? cats : [s(arg.cat || '5', 8)];
+    var b = { storeId: store, catalogId: catalog, categories: cs, statusCodes: ['21', '81'], stockValueQuantityParameters: [{ operator: 'GT', value: 0 }], start: '0', max: '3000' };
+    var d = { storeId: store, catalogId: catalog, categories: cs, statusCodes: ['21', '81'], smDmQuantityParameters: [{ operator: 'GT', value: 0, field: 'DM' }], start: '0', max: '500' };
+    return Promise.all([req('POST', '/api/v1/article/search?include=SmDm', b), req('POST', '/api/v1/article/search?include=SmDm', d)]).then(function (r) {
+      var seen = {}, list = [];
+      ((r[0] && r[0].articleResults) || []).concat((r[1] && r[1].articleResults) || []).forEach(function (a) {
+        var x = row(a);
+        x.chg = s(a.dateStatusChangeFmt, 10);
+        if (seen[x.num] || !(x.stock > 0 || x.dm > 0)) return;
+        seen[x.num] = 1;
+        list.push(x);
+      });
+      window.__st.prog = '0/' + list.length;
+      return inBatches(list.slice(0, 600), 8, function (x) {
+        return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {
+          var m = Array.isArray(j) ? j[0] : j;
+          if (!m) return;
+          x.price = num(m.activeSalesPrice);
+          x.reg = num(m.normalSalesPrice);
+          x.group = s(m.groupId, 8);
+          x.groupName = s(m.groupTitle, 60);
+          x.chg = s(m.dateStatusChangeFmt, 12) || x.chg;
+          var c = (m.substitutionChain || []).filter(function (e) {
+            var st = s(e.statusCode, 3);
+            return /^\d{7}$/.test(s(e.articleNumber, 10)) && s(e.articleNumber, 10) !== x.num && st !== '21' && st !== '81';
+          })[0];
+          if (c) x.succ = { num: s(c.articleNumber, 10), st: s(c.statusCode, 3) };
+        });
+      }).then(function () { return { list: list.slice(0, 600), total: list.length }; });
+    });
+  }
+
   function smset() {
     var items = (Array.isArray(arg.items) ? arg.items : []).slice(0, 300).filter(function (x) {
       return x && /^\d{7}$/.test(String(x.num)) && isFinite(+x.sm) && +x.sm >= 0 && +x.sm <= 9999 && isFinite(+x.dm) && +x.dm >= 0 && +x.dm <= 9999;
@@ -258,7 +293,7 @@
     }).then(function () { return { done: done, failed: failed }; });
   }
 
-  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups }[arg.mode];
+  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {

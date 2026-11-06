@@ -452,13 +452,23 @@ window.onUpdate = (r) => {
 // ----------------------------------------------- articles to sell out (status 21 / 81)
 
 const CLR_ST = ['21', '81'];
-S.clr = { st: 'all', sort: 'stock', q: '', peek: false }; // peek: show the Christmas / New Year articles for now
+S.clr = { st: 'all', sort: 'stock', q: '', peek: false, dept: 'home', busy: '' }; // peek: show the Christmas / New Year articles for now
+// with the background StoreFront jobs the list is read through StoreFront's own search (assets/store-task.js clear):
+// the department's own product groups (no cleaning, laundry or storage of other departments), or furniture
+const clrNew = () => !!A.storeTask;
+/** The list that is shown: { at, st, group, list } of the department (home) or of furniture, or the old read. */
+function clrSrc(dept = S.clr.dept) {
+  if (!clrNew()) return S.user.clear;
+  const d = (S.user.clr2 || {})[dept];
+  return d && d.list ? { at: d.at, st: CLR_ST, group: dept === 'furn' ? '4' : cfg().group, list: d.list, dept } : null;
+}
 const clrStatuses = () => CLR_ST.filter((k) => cfg().clr[k]);
 const whole = (n) => { try { return Math.round(n).toLocaleString('de-DE'); } catch (e) { return String(Math.round(n)); } };
 const money = (n) => { try { return Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (e) { return Number(n).toFixed(2); } };
 const dmy = (s) => String(s || '').replace(/-/g, '.');
 
 function refreshClearance() {
+  if (clrNew()) { loadClr2(S.clr.dept); return; }
   const st = clrStatuses();
   if (!st.length) { toast('Uključi bar jedan status u postavkama.'); return; }
   if (!A.clearance) { toast('Ova verzija ne zna čitati listu.'); return; }
@@ -468,7 +478,7 @@ function refreshClearance() {
 function openClearance() {
   renderClearance();
   go('clearance');
-  if (!(S.user.clear && S.user.clear.list)) refreshClearance();
+  if (!(clrSrc() && clrSrc().list)) refreshClearance();
 }
 
 /**
@@ -478,12 +488,14 @@ function openClearance() {
  * to show them for now (`peek`; the list screen's own switch, other screens pass false). `xmas` counts them, `flag`
  * says which ones they are.
  */
-function clrView(peek = S.clr.peek) {
-  const c = S.user.clear;
-  const all = (c && c.list ? c.list : []).filter(core.inStock);
-  const test = cfg().noxmas ? core.wordMatcher(cfg().xmas) : null;
+function clrView(peek = S.clr.peek, src = clrSrc()) {
+  const c = src;
+  // furniture: also what is on display (DM) with nothing in stock; without a replacement number still sold
+  const all = (c && c.list ? c.list : []).filter((x) => (c.dept === 'furn' ? (core.inStock(x) || x.dm > 0) && !x.succ : core.inStock(x)));
+  const words = cfg().noxmas ? core.wordMatcher(cfg().xmas) : null;
+  const test = words && c && c.dept !== 'furn' ? (name, x) => words(name) || (x && String(x.group || '').startsWith('512')) : words && !(c && c.dept) ? words : null;
   if (!test) return { list: all, xs: [], xmas: 0, flag: () => false };
-  const xs = all.filter((x) => test(x.name));
+  const xs = all.filter((x) => test(x.name, x));
   const hit = new Set(xs.map((x) => x.num));
   return { list: peek ? all : all.filter((x) => !hit.has(x.num)), xs, xmas: xs.length, flag: (x) => hit.has(x.num) };
 }
@@ -494,19 +506,19 @@ function renderClearBar() {
   const has = S.plans.length > 0;
   b.hidden = !has;
   if (!has) return;
-  const c = S.user.clear;
+  const c = clrSrc('home');
   const ic = icon('box');
   if (!c || !c.list) {
     b.innerHTML = `${ic}<span><b>Artikli za rasprodaju</b><small>Status ${clrStatuses().join(' i ')} sa zalihom, iz StoreFronta</small></span><span class="go">Učitaj</span>`;
     return;
   }
-  const v = clrView();
+  const v = clrView(false, c);
   const n = (s) => v.list.filter((x) => x.st === s).length;
   b.innerHTML = `${ic}<span><b>Za rasprodaju: ${v.list.length}</b><small>${c.st.map((k) => `Status ${k}: ${n(k)}`).join(' · ')} · ${esc(ageText(c.at))}</small></span><span class="go">Otvori</span>`;
 }
 
 function clrFiltered() {
-  const c = S.user.clear;
+  const c = clrSrc();
   if (!c || !c.list) return [];
   const toks = norm(S.clr.q).split(/\s+/).filter(Boolean);
   let list = clrView().list.filter((x) => S.clr.st === 'all' || x.st === S.clr.st);
@@ -520,10 +532,92 @@ function clrFiltered() {
   const by = S.clr.sort;
   if (by === 'num') return list.sort((a, b) => a.num.localeCompare(b.num));
   list.sort((a, b) => (by === 'value' ? val(b) - val(a) : by === 'new' ? core.dateKey(b.chg) - core.dateKey(a.chg) : b.stock - a.stock) || a.name.localeCompare(b.name, 'bs'));
+  // furniture: what stands on display with nothing in stock comes first (customers do not see it)
+  if (c.dept === 'furn') list.sort((a, b) => (+(b.dm > 0 && b.stock <= 0)) - (+(a.dm > 0 && a.stock <= 0)));
   return list;
 }
 
+/** Reads the list of the department (home: its own product groups, no Christmas) or of furniture. */
+function loadClr2(dept) {
+  if (S.clr.busy) return;
+  S.clr.busy = dept;
+  renderClearance();
+  const run = () => {
+    const used = deptUsed().map((x) => x.id).filter((id) => !id.startsWith('512')); // Christmas is never on this list
+    const arg = dept === 'furn' ? { cats: ['4'] } : used.length ? { cats: used } : { cat: cfg().group || '5' };
+    const ok = stCall({ mode: 'clear', ...arg }, (r) => {
+      S.clr.busy = '';
+      if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
+        const list = r.res.list.slice(0, 600).filter((x) => /^\d{7}$/.test(x.num)).map((x) => ({
+          num: x.num, name: String(x.name || ''), st: String(x.st || ''), unit: String(x.unit || 'KOM'), stock: +x.stock || 0, free: +x.free || 0,
+          sm: +x.sm || 0, dm: +x.dm || 0, price: x.price ? +x.price : null, reg: x.reg ? +x.reg : null, chg: String(x.chg || '').slice(0, 10).replace(/\./g, '-'),
+          group: String(x.group || ''), groupName: String(x.groupName || ''), succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || '') } : null,
+        }));
+        S.user.clr2 = { ...(S.user.clr2 || {}), [dept]: { at: Date.now(), list } };
+        saveUser();
+        const n = clrView(false, clrSrc(dept)).list.length;
+        toast(`Učitano: ${n} ${plural(n, 'artikal', 'artikla', 'artikala')}`);
+      } else {
+        toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'Lista se nije mogla učitati. Pokušaj ponovo.');
+      }
+      if (top().id === 'clearance') renderClearance();
+      if (top().id === 'plans') renderPlans();
+      renderClearBar();
+    });
+    if (!ok) { S.clr.busy = ''; renderClearance(); }
+  };
+  if (dept === 'home') withDept(run); else run();
+}
+
+/** A furniture row (or one with a DM): on display with nothing in stock means customers do not see it as in stock. */
+function clrRowFurn(x, xm) {
+  const shown = x.dm > 0;
+  const hidden = shown && x.stock <= 0;
+  const cut = x.reg != null && x.price != null && x.reg > x.price;
+  const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.groupName].filter(Boolean).join(' · ');
+  return `<div class="clr-furn${hidden ? ' is-hidden' : ''}">
+    <button class="item clr-item" type="button" data-store="${esc(x.num)}">
+      ${thumb(x.num)}
+      <span class="item-main">
+        <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${shown ? `<span class="pill pill-dm">Na izlogu · DM ${whole(x.dm)}</span>` : ''}${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
+        <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
+        <span class="clr-line"><b>${whole(x.stock)} ${esc(x.unit || 'KOM')}</b> na zalihi${x.price != null ? ` · ${money(x.price)} KM` : ''}${cut ? ` <s>${money(x.reg)}</s>` : ''}</span>
+        ${meta ? `<span class="clr-sub">${esc(meta)}</span>` : ''}
+      </span>
+      ${icon('chev', 'chev')}
+    </button>
+    ${hidden ? `<div class="clr-dm"><span>Zaliha 0, a ${x.dm > 1 ? `${whole(x.dm)} komada stoje` : 'komad stoji'} u DM: kupci ga ne vide na zalihi. Kad se skine s DM, zaliha pređe sa 0 na ${whole(x.dm)}.</span>
+      <button class="btn btn-soft btn-small" type="button" data-clr-dm="${esc(x.num)}" ${S.clr.busy ? 'disabled' : ''}>Skini s DM (DM na 0)</button></div>` : ''}
+  </div>`;
+}
+
+async function clrDmOff(num) {
+  const src = clrSrc();
+  const x = src && src.list.find((y) => y.num === num);
+  if (!x || S.clr.busy) return;
+  const yes = await ask(`Skinuti ${num} s DM?`, `<p>${esc(x.name)}</p><p>DM ${whole(x.dm)} → 0 (SM ostaje ${whole(x.sm)}). Izloženi ${x.dm > 1 ? 'komadi prelaze' : 'komad prelazi'} na zalihu (0 → ${whole(x.stock + x.dm)}) i kupci ${x.dm > 1 ? 'ih' : 'ga'} vide kao dostupan. Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
+    [{ label: 'Skini s DM', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
+  if (!yes) return;
+  S.clr.busy = 'dm';
+  renderClearList();
+  const ok = stCall({ mode: 'smset', items: [{ num, sm: x.sm, dm: 0 }] }, (r) => {
+    S.clr.busy = '';
+    if (r.how === 'ok' && r.res && (r.res.done || []).includes(num)) {
+      x.stock += x.dm;
+      x.free += x.dm;
+      x.dm = 0;
+      saveUser();
+      toast('Skinuto s DM. Zaliha se u StoreFrontu osvježi za koji trenutak.');
+    } else {
+      toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'Nije spremljeno. Pokušaj ponovo.');
+    }
+    if (top().id === 'clearance') renderClearance();
+  });
+  if (!ok) { S.clr.busy = ''; renderClearList(); }
+}
+
 function clrRow(x, xm) {
+  if (x.dm > 0 || (clrSrc() && clrSrc().dept === 'furn')) return clrRowFurn(x, xm);
   const cut = x.reg != null && x.price != null && x.reg > x.price;
   const free = x.free !== x.stock ? ` (slobodno ${whole(x.free)})` : '';
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.dd && !x.dd.endsWith('-9998') ? `DD ${dmy(x.dd)}` : ''].filter(Boolean).join(' · ');
@@ -540,7 +634,7 @@ function clrRow(x, xm) {
 }
 
 function renderClearList() {
-  const c = S.user.clear;
+  const c = clrSrc();
   if (!c || !$('#clrList')) return;
   const v = clrView();
   const list = clrFiltered();
@@ -550,7 +644,8 @@ function renderClearList() {
   const xm = here || (S.clr.peek && v.xmas) ? `<button class="clr-xmas" type="button" data-clr-xmas="1">${S.clr.peek
     ? `Prikazani su i ${usual ? 'božićni i novogodišnji' : 'sakriveni po riječima iz postavki'}${here ? `: ${here}` : ''} · Sakrij`
     : `Sakriveno ${usual ? 'božićnih i novogodišnjih' : 'po riječima iz postavki'}: ${here} · Prikaži`}</button>` : '';
-  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}</small>${xm}`;
+  const hid = c.dept === 'furn' ? list.filter((x) => x.dm > 0 && x.stock <= 0).length : 0;
+  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}${c.dept === 'furn' ? ' · bez zamjenske šifre' : ''}</small>${hid ? `<small class="clr-hid">Na izlogu sa zalihom 0: ${hid} (prvi na listi)</small>` : ''}${xm}`;
   $('#clrList').innerHTML = list.length ? `<div class="list">${list.map((x) => clrRow(x, S.clr.peek && v.flag(x))).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
   const lim = (c.limited || []);
   const notes = [];
@@ -586,7 +681,16 @@ function clrDetails(open) {
 
 function renderClearance() {
   const body = $('#clearBody');
-  const c = S.user.clear;
+  const c = clrSrc();
+  const seg = clrNew() ? `<div class="seg clr-dept" role="tablist">${[['home', 'Homeware'], ['furn', 'Namještaj']].map(([v, t]) => `<button class="seg-btn" type="button" role="tab" aria-selected="${S.clr.dept === v}" data-clr-dept="${v}">${t}</button>`).join('')}</div>` : '';
+  if (clrNew() && S.clr.busy === S.clr.dept) {
+    body.innerHTML = `${seg}<p class="count-line"><i class="mj-busy"></i> ${S.deptBusy ? 'Prvi put: tražim grupe tvog odjela iz planograma…' : `Čitam ${S.clr.dept === 'furn' ? 'namještaj' : 'tvoj odjel'} sa statusom 21 i 81 iz StoreFronta… (do pola minute)`}</p>`;
+    return;
+  }
+  if (clrNew() && (!c || !c.list)) {
+    body.innerHTML = `${seg}<p class="empty">Lista još nije učitana.</p><button class="btn btn-primary btn-block" type="button" data-act="clear-refresh">${icon('refresh')}Učitaj iz StoreFronta</button>`;
+    return;
+  }
   if (!c || !c.list) {
     const failed = S.user.clrInfo && S.user.clrInfo.how !== 'cancelled' && (S.user.clrInfo.diag || S.user.clrInfo.err || (S.user.clrInfo.parts || []).some((p) => p.got === 0 && !p.limited && p.found !== 0));
     body.innerHTML = `<p class="empty">${failed ? 'Nisam uspio pročitati listu.' : 'Lista još nije učitana.'}</p>
@@ -599,7 +703,7 @@ function renderClearance() {
   if (S.clr.st !== 'all' && !c.st.includes(S.clr.st)) S.clr.st = 'all';
   const sts = [['all', `Svi (${v.list.length})`], ...c.st.map((k) => [k, `${k} (${n(k)})`])];
   const sorts = [['stock', 'Količina'], ['value', 'Vrijednost'], ['num', 'Šifra'], ['new', 'Novi status']];
-  body.innerHTML = `<div class="clr-sum" id="clrSum"></div>
+  body.innerHTML = `${seg}<div class="clr-sum" id="clrSum"></div>
     <div class="clr-tools">
       <div class="seg seg-sm" role="radiogroup" aria-label="Status">${sts.map(([v, t]) => `<button class="seg-btn" type="button" role="radio" aria-checked="${S.clr.st === v}" data-clr-st="${v}">${t}</button>`).join('')}</div>
       <form class="search" id="clrForm" role="search" autocomplete="off">
@@ -644,7 +748,7 @@ window.onClearance = (r) => {
   S.user.clear = { at: r.at || Date.now(), st: want, group: r.group || cfg().group, list, limited, short };
   saveUser();
   const partial = r.how !== 'ok' || limited.length || short.length;
-  const shown = clrView(false).list.length; // what the list will show: only the ones in stock, without Christmas
+  const shown = clrView(false, S.user.clear).list.length; // what the list will show: only the ones in stock, without Christmas
   toast(partial ? 'Lista je učitana samo djelimično.' : `Učitano: ${shown} ${plural(shown, 'artikal', 'artikla', 'artikala')}`);
   if (top().id === 'clearance') renderClearance();
   if (top().id === 'plans') renderPlans();
@@ -742,7 +846,7 @@ function renderSettings() {
     ${sw('noxmas', 'Sakrij božićne i novogodišnje artikle', 'Ne prikazuju se artikli kojima u nazivu piše neka od riječi ispod. Lista ih i dalje čita, pa se mogu vratiti.', c.noxmas)}
     ${c.noxmas ? `<div class="set-row set-col"><div class="set-txt"><b>Riječi za sakrivanje</b><small>Odvoji zarezom. Veliko ili malo slovo i č, ć, š, ž, đ nisu bitni, a riječ se traži na početku riječi u nazivu.</small></div>
       <input class="set-input" id="xmasWords" type="text" value="${esc(c.xmas)}" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Riječi za sakrivanje"></div>` : ''}
-    ${act('clear-refresh', 'Učitaj listu sada', S.user.clear && S.user.clear.list ? `${clrView().list.length} artikala, ${esc(ageText(S.user.clear.at))}` : 'Još nije učitana')}
+    ${act('clear-refresh', 'Učitaj listu sada', clrSrc() && clrSrc().list ? `${clrView().list.length} artikala, ${esc(ageText(clrSrc().at))}` : 'Još nije učitana')}
     ${act('clear-clear', 'Obriši listu s telefona', '', true)}
   </div></section>
 
@@ -806,7 +910,7 @@ function onSettingsClick(t) {
     if (a === 'login-set') { S.loginWait = true; A.plansLogin(''); return; }
     if (a === 'login-forget') { try { A.plansLogout(); } catch (e) { /* older shell */ } toast('Korisničko ime i lozinka su obrisani s telefona.'); }
     if (a === 'mj-clear') { S.user.mj = null; saveUser(); store.remove(MJ_FILE); toast('Vijesti i zadaci su obrisani s telefona.'); }
-    if (a === 'clear-clear') { S.user.clear = null; saveUser(); toast('Lista je obrisana s telefona.'); }
+    if (a === 'clear-clear') { S.user.clear = null; S.user.clr2 = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }
     if (a === 'upd-check') { checkUpdate(true); toast('Tražim novu verziju…'); return; }
     if (a === 'upd-install') { installUpdate(); return; }
@@ -3316,7 +3420,7 @@ function sectionPage(p, s) {
  * null = no list for this planogram: it is read for one product group only, the department's own.
  */
 function planClear(p, view) {
-  const c = S.user.clear;
+  const c = clrSrc('home');
   const dept = p.plan && p.plan.meta && p.plan.meta.dept ? parseInt(p.plan.meta.dept.code, 10) : NaN;
   if (dept !== parseInt((c && c.group) || cfg().group, 10)) return null;
   if (!c || !c.list) return { wait: true };
@@ -3355,7 +3459,7 @@ function renderPlans() {
   </div>`;
   if (!S.plans.length) h += '<p class="empty">Još nema planograma.</p>';
   const sorted = S.plans.slice().sort((a, b) => a.title.localeCompare(b.title, 'bs'));
-  const view = clrView(false);
+  const view = clrView(false, clrSrc('home'));
   for (const p of sorted) {
     const ch = S.user.changes[p.id];
     const chN = ch ? ch.added.length + ch.removed.length + ch.moved.length : 0;
@@ -3912,7 +4016,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -3953,6 +4057,8 @@ function bind() {
     }
     if (t.dataset.au || t.dataset.auOpen || t.dataset.auGo || t.dataset.auZero || t.dataset.auMove) { onAuClick(t); return; }
     if (t.dataset.stockRetry) { stockLoad(t.dataset.stockRetry, true); return; }
+    if (t.dataset.clrDept) { S.clr.dept = t.dataset.clrDept; S.clr.st = 'all'; S.clr.q = ''; renderClearance(); if (!(clrSrc() && clrSrc().list)) loadClr2(S.clr.dept); return; }
+    if (t.dataset.clrDm) { clrDmOff(t.dataset.clrDm); return; }
     if (t.dataset.clrSt) { S.clr.st = t.dataset.clrSt; renderClearance(); return; }
     if (t.dataset.clrSort) { S.clr.sort = t.dataset.clrSort; renderClearance(); return; }
     if (t.dataset.clrXmas) { S.clr.peek = !S.clr.peek; renderClearance(); return; }

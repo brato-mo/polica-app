@@ -1282,3 +1282,13 @@ button.code-chip:active { transform: scale(.96); }
 .dept-groups .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .dept-groups .chip[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
 .dept-groups .chip small { opacity: .6; margin-left: 2px; }
+
+/* Za rasprodaju: Homeware / Namještaj, furniture on display */
+.clr-dept { margin: 0 0 12px; }
+.clr-furn { border-bottom: 1px solid var(--line); }
+.clr-furn .clr-item { border-bottom: 0; }
+.clr-furn.is-hidden { background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.pill-dm { background: var(--primary-soft); color: var(--primary); }
+.clr-dm { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 0 14px 14px 14px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+.clr-item .code { flex-wrap: wrap; row-gap: 4px; }
+.clr-hid { display: block; color: var(--danger); font-weight: 700; }
