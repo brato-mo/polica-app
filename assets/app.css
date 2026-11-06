@@ -1331,3 +1331,5 @@ body.is-sandbox::after { content: 'TEST · ništa se ne šalje'; position: fixed
 .op-moves li.is-exact { color: var(--ink); }
 .op-none { margin: 4px 0 0; font-size: 12px; color: var(--ink-2); }
 .op-warnline { font-weight: 600; }
+.mp-pending > .btn:not(.mp-apply) { margin: 6px 14px; width: calc(100% - 28px); }
+.mp-pending > .att-from, .mp-pending > .count-line { margin-left: 14px; margin-right: 14px; }

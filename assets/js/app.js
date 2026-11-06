@@ -122,6 +122,7 @@ function pruneSuperseded() {
 function load() {
   const u = store.read('user.json', null);
   if (u) S.user = { recent: [], learned: {}, changes: {}, orders: null, ...u };
+  migrate158();
   const list = store.read('plans.json', []);
   S.plans = [];
   for (const meta of list) {
@@ -129,6 +130,19 @@ function load() {
     if (plan && plan.items) S.plans.push({ ...meta, plan });
   }
   rebuildIndex();
+}
+
+/**
+ * Records of 1.57 and older, once. Lines waiting for Regulacija were put there by 1.57 also when the answer to the
+ * Regulacija never came (a dropped connection counted as "not sent"): some of them may have gone through. Each is
+ * marked "from 1.57" and cannot be sent again until the employee has checked it (Minus lista → Čeka Regulaciju).
+ */
+function migrate158() {
+  const u = S.user;
+  if (!u || (u.dataVer || 0) >= 158) return;
+  for (const p of u.minusPending || []) if (p && typeof p === 'object') p.legacy = true;
+  u.dataVer = 158;
+  saveUser();
 }
 
 /** Every place an article is shown, across all planograms. */
@@ -875,6 +889,7 @@ function renderSettings() {
     ${act('recent', 'Obriši zadnje traženo', `${S.user.recent.length} artikala`, true)}
     ${act('learned', 'Zaboravi povezane barkodove', `${learned} povezanih`, true)}
     ${act('signout', 'Odjavi se iz StoreFronta', 'Sljedeći put se ponovo prijaviš na njihovoj stranici', true)}
+    ${backupsOf().map((b) => act('restore:' + b.name, `Vrati kopiju ${b.name.startsWith('vraceno') ? 'od prije vraćanja' : 'od prije nadogradnje'}`, `${new Date(b.at).toLocaleString('bs-BA')} · ${b.files} datoteka. Planogrami i prijava ostaju. Dodirni dvaput.`, true)).join('')}
   </div></section>
 
   ${sandboxOn() ? `<section class="set-block"><h3>TEST: simulacija slanja</h3><div class="set-card">
@@ -907,7 +922,19 @@ const SIMS = [
   ['slow', 'Sporo (15 s po koraku)', 'Za test zatvaranja ili isključenja interneta usred slanja'],
 ];
 
+/** Copies of the records the phone made before an update (newest first). */
+const backupsOf = () => { try { return JSON.parse((A.backups && A.backups()) || '[]'); } catch (e) { return []; } };
+
 function onSettingsClick(t) {
+  if (t.dataset.act && t.dataset.act.startsWith('restore:')) {
+    const name = t.dataset.act.slice(8);
+    if (S.restoreArmed !== name) { S.restoreArmed = name; toast('Dodirni još jednom za vraćanje kopije. Sadašnji podaci se prvo sačuvaju.'); setTimeout(() => { S.restoreArmed = null; }, 5000); return; }
+    S.restoreArmed = null;
+    let ok = false;
+    try { ok = !!A.restoreBackup(name); } catch (e) { ok = false; }
+    toast(ok ? 'Kopija vraćena. Učitavam…' : 'Vraćanje nije uspjelo. Podaci od prije pokušaja su sačuvani kao nova kopija ovdje.');
+    return;
+  }
   if (t.dataset.sim) { try { A.setSim(t.dataset.sim); } catch (e) { /* not a test build */ } renderSettings(); toast('Simulacija: ' + (SIMS.find((x) => x[0] === t.dataset.sim) || [])[1]); return; }
   if (t.dataset.set) {
     const k = t.dataset.set;
@@ -1329,6 +1356,20 @@ function minusOpCheck() {
   renderMinus();
 }
 
+/** Read only: the stock history of the replacement numbers of the lines 1.57 left waiting for Regulacija. */
+function legacyCheck() {
+  const items = (S.user.minusPending || []).filter((p) => p && p.legacy && p.target);
+  if (!items.length) return;
+  const since = Date.now() - 14 * 86400000;
+  S.legacyCheck = { busy: true };
+  const ok = stCall({ mode: 'opcheck', items: items.map((x) => ({ num: x.num, target: x.target })), since: since + 6 * 3600000 }, (r) => {
+    S.legacyCheck = r.how === 'ok' ? { res: minusop.evidence({ kind: 'adjust', at: since, end: Date.now(), items }, r.res) } : { err: r.how === 'login' ? 'traži prijavu' : 'greška' };
+    if (top().id === 'minus') renderMinus();
+  });
+  if (!ok) S.legacyCheck = { err: 'ova verzija to ne zna' };
+  renderMinus();
+}
+
 /** The employee's own decision on an unknown sending, after he checked it in StoreFront. */
 function minusOpResolve(how) {
   const op = S.minusOp;
@@ -1489,10 +1530,25 @@ function minusPlan(list) {
   };
   const left = (step) => one.filter((x) => !done[key(x, step)]).length;
   const busy = S.minusApplying || minusop.locks(S.minusOp) ? 'disabled' : '';
+  const legacy = pending.filter((p) => p.legacy);
+  const lc = S.legacyCheck;
+  const MVL = { '911': 'smanjenje (911)', '912': 'povećanje (912)' };
+  const tm = (t) => new Date(t).toLocaleString('bs-BA', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const legacyRow = (p) => {
+    const l = lc && lc.res && lc.res.lines.find((x) => x.num === p.num);
+    const moves = l ? (l.targetMoves.length ? `<ul class="op-moves">${l.targetMoves.map((m) => `<li class="${m.q === -Math.abs(p.qty) && m.mine ? 'is-exact' : ''}">${esc(tm(m.t))} · <b>${m.q > 0 ? '+' : ''}${esc(mq(m.q))}</b> · ${esc(MVL[m.type] || m.type || '?')} · ${m.mine ? 'tvojim korisnikom' : 'drugi korisnik'}${m.q === -Math.abs(p.qty) && m.mine ? ' · <b>ista količina</b>' : ''}</li>`).join('')}</ul>` : '<p class="op-none">U zadnje 2 sedmice nema kretanja zalihe za ovu šifru.</p>') : '';
+    return `<div class="mp-row"><div class="mp-txt"><span><b>${esc(p.target)}</b> ukloni <b>${mq(Math.abs(p.qty))}</b> · kod 53${p.legacy ? ' · <b>iz 1.57, provjeri</b>' : ''}</span><small>${esc(p.c2)}</small>${moves}</div></div>`;
+  };
+  const legacyBox = legacy.length ? `<p class="att-from op-warnline">${legacy.length} ${plural(legacy.length, 'red je', 'reda su', 'redova je')} ovdje stavila verzija 1.57, koja je i prekinutu vezu brojala kao „nije prošlo“. Neki su možda ipak prošli. Prije slanja provjeri u StoreFrontu (Regulacija zalihe, historija zalihe).</p>
+      ${lc && lc.busy ? '<p class="count-line"><i class="mj-busy"></i> Čitam historiju zalihe…</p>' : lc && lc.err ? `<p class="att-from">Provjera nije uspjela (${esc(lc.err)}).</p>` : lc && lc.res ? '<p class="att-from">Kretanja zadnje 2 sedmice za šifre ispod. Ovo nije dokaz: StoreFront ne pokazuje komentar ni razlog.</p>' : ''}
+      <button class="btn btn-block" type="button" data-legacy-check ${lc && lc.busy ? 'disabled' : ''}>Provjeri u StoreFrontu (samo čitanje)</button>
+      <button class="btn btn-block" type="button" data-legacy-ok="notdone">Provjerio sam: Regulacija nije prošla</button>
+      <button class="btn btn-block" type="button" data-legacy-ok="done">Provjerio sam: prošla je, ukloni</button>` : '';
   const pend = pending.length ? `<div class="mp-step mp-pending"><div class="mp-head"><b>Čeka Regulaciju</b><small>${pending.length}</small></div>
       <p class="att-from">Ovi artikli su na Minus listi već vraćeni na 0, ali Regulacija zalihe nije prošla:</p>
-      ${pending.map((p) => `<div class="mp-row"><div class="mp-txt"><span><b>${esc(p.target)}</b> ukloni <b>${mq(Math.abs(p.qty))}</b> · kod 53</span><small>${esc(p.c2)}</small></div></div>`).join('')}
-      <button class="btn btn-primary btn-block mp-apply" type="button" data-mp-apply-adjust ${busy}>${S.minusApplying ? 'Šaljem…' : 'Pošalji samo Regulaciju'}</button>
+      ${pending.map(legacyRow).join('')}
+      ${legacyBox}
+      <button class="btn btn-primary btn-block mp-apply" type="button" data-mp-apply-adjust ${busy || legacy.length ? 'disabled' : ''}>${S.minusApplying ? 'Šaljem…' : 'Pošalji samo Regulaciju'}</button>
       <button class="text-btn" type="button" data-mp-pending-clear>Uradio sam to u StoreFrontu, ukloni</button></div>` : '';
   if (!one.length) return `<section class="mj-sec mp"><div class="sec-head"><h2>Plan za smjenu</h2></div>${pend}</section>`;
   return `<section class="mj-sec mp"><div class="sec-head"><h2>Plan za smjenu</h2><small>${one.length} ${plural(one.length, 'zamjena', 'zamjene', 'zamjena')}</small></div>
@@ -1568,9 +1624,21 @@ window.onMinusApplied = (r) => {
 };
 
 function onMinusClick(ev) {
-  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page],[data-mp-apply],[data-mp-apply-adjust],[data-mp-pick],[data-mp-pending-clear],[data-op-check],[data-op-resolve]');
+  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page],[data-mp-apply],[data-mp-apply-adjust],[data-mp-pick],[data-mp-pending-clear],[data-op-check],[data-op-resolve],[data-legacy-check],[data-legacy-ok]');
   if (!t) return;
   if ('opCheck' in t.dataset) { minusOpCheck(); return; }
+  if ('legacyCheck' in t.dataset) { legacyCheck(); return; }
+  if (t.dataset.legacyOk) {
+    const legacy = (S.user.minusPending || []).filter((p) => p && p.legacy);
+    if (t.dataset.legacyOk === 'done') S.user.minusPending = (S.user.minusPending || []).filter((p) => !(p && p.legacy));
+    else for (const p of legacy) { delete p.legacy; p.checkedAt = Date.now(); }
+    saveUser();
+    S.legacyCheck = null;
+    toast(t.dataset.legacyOk === 'done' ? `Uklonjeno ${legacy.length}: Regulacija je već bila prošla.` : 'Zapisano. Regulacija se sada može poslati.');
+    renderMinus();
+    renderMinusBar();
+    return;
+  }
   if (t.dataset.opResolve) { minusOpResolve(t.dataset.opResolve); return; }
   if (('mpApply' in t.dataset || 'mpApplyAdjust' in t.dataset) && minusop.locks(minusOpNow())) {
     toast('Prethodno slanje ima nepoznat ishod. Prvo ga provjeri.');
@@ -1590,6 +1658,7 @@ function onMinusClick(ev) {
     if (S.minusApplying) return;
     const items = (S.user.minusPending || []).filter((p) => p && p.target);
     if (!items.length) return;
+    if (items.some((p) => p.legacy)) { toast('Prvo provjeri redove iz 1.57.'); return; }
     if (!A.minusApplyAdjust) { toast('Ova verzija aplikacije to ne zna. Uradi Regulaciju u StoreFrontu.'); return; }
     S.minusSending = items;
     S.minusSendingAdjust = true;

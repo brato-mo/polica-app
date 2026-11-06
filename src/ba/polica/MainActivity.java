@@ -101,6 +101,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Upgrade.snapshot(this); // the first run of a newer version keeps a copy of the records first
         applyBars();
         web = new WebView(this);
         web.setBackgroundColor(barsDark() ? 0xFF0E1014 : 0xFFF3F4F7);
@@ -819,6 +820,27 @@ public class MainActivity extends Activity {
                     showMinusApply(items, false);
                 }
             });
+        }
+
+        /** Copies of the records made before an update (Upgrade): JSON list. */
+        @JavascriptInterface
+        public String backups() {
+            return Upgrade.list(MainActivity.this);
+        }
+
+        /** Puts a copy back, then the page loads again with it. */
+        @JavascriptInterface
+        public boolean restoreBackup(final String name) {
+            boolean ok = Upgrade.restore(MainActivity.this, name);
+            if (ok) {
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        web.reload();
+                    }
+                });
+            }
+            return ok;
         }
 
         /** A test build (Sandbox): nothing that writes leaves the phone; sendings are played. */
