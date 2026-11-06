@@ -1,7 +1,7 @@
 {
- "code": 62,
- "name": "1.60",
- "notes": "Slike iz StoreFronta za artikle koji nisu u tvojim planogramima (skeniranje, rasprodaja, najprodavaniji, Minus lista); dodir na sliku je uveća",
+ "code": 63,
+ "name": "1.61",
+ "notes": "Slika iz StoreFronta i na ekranu artikla (i kad je artikal u planogramu bez slike); naziv iz StoreFronta umjesto 'Bez naziva'",
  "size": 2024484,
- "sha256": "1afb9410ecab81688437b701d0bac8f51fd0523f54cab48ba7ceda75af10b749"
+ "sha256": "fbe3f7cacc56b985f26ebe5af8f4d0e5d661848e8e7130c1bef6a8ede93a0ebd"
 }
