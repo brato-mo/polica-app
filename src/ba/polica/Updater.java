@@ -26,7 +26,8 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 
 /**
- * Updates the app from its own repository: reads dist/version.json, downloads dist/Polica.apk, checks the
+ * Updates the app from its own repository: reads dist/version.json, downloads the APK it names (a release file of the
+ * same repository, else dist/Polica.apk), checks the
  * SHA-256 and that the file is signed with the same key as this app, then hands it to Android's installer
  * (the system asks the user once to confirm). Nothing is installed without that confirmation.
  */
@@ -125,7 +126,7 @@ final class Updater {
         info.put("pct", 0);
         l.on(info);
         File tmp = new File(dir(), "download.part");
-        get(base + "Polica.apk?t=" + System.currentTimeMillis(), tmp, new Progress(info, size, l), size);
+        get(apkUrl(v), tmp, new Progress(info, size, l), size);
         if (tmp.length() != size || !sha.equals(sha256(tmp))) {
             tmp.delete();
             throw new Exception("kontrolna suma ne odgovara");
@@ -136,6 +137,18 @@ final class Updater {
         }
         info.put("state", "ready");
         l.on(info);
+    }
+
+    /**
+     * Where the APK is: version.json may name a file of a GitHub release of this same repository ("url"), so the APK
+     * itself does not have to live in the repository; without it (or with any other address) the old place,
+     * dist/Polica.apk. The checks after the download (size, SHA-256, same signing key) are the same either way.
+     */
+    String apkUrl(JSONObject v) {
+        String url = v.optString("url", "");
+        String repo = ctx.getString(R.string.update_repo);
+        if (url.startsWith("https://github.com/" + repo + "/releases/download/") && !url.contains("..")) return url;
+        return base + "Polica.apk?t=" + System.currentTimeMillis();
     }
 
     private static final class Progress {
