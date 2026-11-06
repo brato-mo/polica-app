@@ -8,6 +8,7 @@
 //   { mode: 'smset', items: [{ num, sm, dm }] }  saves these SM/DM values (only what the employee confirmed)
 //   { mode: 'me' }                  who the employee is (name, number), to keep in the app's own settings
 //   { mode: 'opcheck', items, since }  read only: stock history and Minus lista after a sending with unknown outcome
+//   { mode: 'eans', nums }  read only: the barcodes of these articles (at most 400)
 //   { mode: 'pics', nums }  read only: the picture addresses of these articles (at most 40)
 // Only 'smset' changes anything. The result is left in window.__st for the app to pick up.
 (function () {
@@ -356,7 +357,18 @@
     }).then(function (l) { return { pics: l.filter(Boolean) }; });
   }
 
-  var run = { me: me, pics: pics, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
+  // the barcodes (EAN, older EANs) of these articles (read only), so a scanned barcode finds its article at once
+  function eans() {
+    var nums = (Array.isArray(arg.nums) ? arg.nums : []).map(function (n) { return s(n, 10); }).filter(function (n) { return /^\d{7}$/.test(n); }).slice(0, 400);
+    return inBatches(nums, 6, function (n) {
+      return search({ query: n, fieldsToSearch: ['id'] }, 3).then(function (r) {
+        var a = r.list.filter(function (x) { return x.num === n; })[0];
+        return { num: n, eans: a ? [a.ean].concat(a.eans).filter(function (e) { return /^\d{8,14}$/.test(e); }) : [] };
+      });
+    }).then(function (l) { return { list: l.filter(Boolean) }; });
+  }
+
+  var run = { me: me, pics: pics, eans: eans, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {

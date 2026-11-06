@@ -94,7 +94,46 @@ function savePlansList() {
 function rebuildIndex() {
   const byAge = S.plans.slice().sort((a, b) => a.imported - b.imported);
   S.index = core.buildIndex(byAge.map((p) => ({ id: p.id, plan: p.plan })));
+  eanSoon(3000);
 }
+
+// ------------------------------------------- barcodes of the planogram articles, from StoreFront
+// A planogram has the 7-digit article numbers, the goods carry EAN barcodes. StoreFront knows which barcodes belong
+// to which article (read only): asked once for every planogram article (again after 30 days), kept in eans.json
+// = { m: { ean: num }, done: { num: time } }, so a scanned barcode opens its place at once, without StoreFront.
+let eanData = null, eanBusy = false, eanTimer = 0, eanPause = 0;
+function eanStore() {
+  if (!eanData) {
+    eanData = store.read('eans.json', null);
+    if (!eanData || typeof eanData !== 'object') eanData = {};
+    eanData.m = eanData.m || {};
+    eanData.done = eanData.done || {};
+  }
+  return eanData;
+}
+function eanSoon(ms) { clearTimeout(eanTimer); eanTimer = setTimeout(eanSync, ms); }
+function eanSync() {
+  if (eanBusy || !A.storeTask || Date.now() < eanPause || !S.index) return;
+  const d = eanStore(), old = Date.now() - 30 * 86400000;
+  const nums = [...S.index.byNum.keys()].filter((n) => /^\d{7}$/.test(n) && !(d.done[n] > old)).slice(0, 200);
+  if (!nums.length) return;
+  eanBusy = true;
+  const ok = stCall({ mode: 'eans', nums }, (r) => {
+    eanBusy = false;
+    if (r.how !== 'ok' || !r.res) { eanPause = Date.now() + 10 * 60000; eanSoon(10 * 60000 + 1000); return; }
+    const now = Date.now();
+    for (const x of r.res.list || []) {
+      if (!/^\d{7}$/.test(String(x.num))) continue;
+      d.done[x.num] = now;
+      for (const e of x.eans || []) if (/^\d{8,14}$/.test(String(e))) d.m[e] = x.num;
+    }
+    store.write('eans.json', d);
+    eanSoon(1500); // the next 200, if there are more
+  });
+  if (!ok) eanBusy = false;
+}
+/** The article a barcode belongs to by StoreFront's own list, or ''. */
+const eanOf = (code) => (eanStore().m[String(code || '').replace(/\s+/g, '')] || '');
 
 function dropFiles(id) {
   A.removePdf(`${id}.pdf`);
@@ -3412,6 +3451,8 @@ function renderMissing(code) {
     if (r.how === 'timeout') { say('StoreFront nije odgovorio na vrijeme. Provjeri vezu i pokušaj ponovo.', 'is-bad'); return; }
     const res = (r.results || []).slice(0, 3);
     if (!res.length) { say(`StoreFront ne nalazi barkod ${esc(code)}.`, 'is-bad'); return; }
+    // StoreFront names exactly one article and it is in a planogram: link it and show its place, no extra tap
+    if (res.length === 1 && S.index.byNum.has(res[0].num) && top().id === 'missing') { link(res[0].num); return; }
     S.user.store = { ok: true };
     saveUser();
     const rows = res.map((x, i) => {
@@ -3465,7 +3506,8 @@ function startScan() {
 function handleCode(code) {
   const c = String(code || '').trim();
   if (!c) return;
-  const res = core.resolveCode(S.index, c, S.user.learned);
+  let res = core.resolveCode(S.index, c, S.user.learned);
+  if (!res && eanOf(c)) res = core.resolveCode(S.index, c, { [c.replace(/\s+/g, '')]: eanOf(c) });
   const replace = ['item', 'missing'].includes(top().id);
   if (res) openItem(res.num, { via: res.via, code: c, from: res.from }, { replace });
   else openMissing(c, { replace });
