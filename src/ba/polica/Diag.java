@@ -47,6 +47,11 @@ final class Diag {
         file(ctx, "W", line);
     }
 
+    /** A short note for the local file only (how long a StoreFront job took, ...), cleaned like the rest. */
+    static void i(Context ctx, String what) {
+        file(ctx, "I", clean(what));
+    }
+
     /** A console message of the app's own page: only warnings and errors are kept in a release build. */
     static void console(Context ctx, String level, String msg, String src, int line) {
         boolean bad = "ERROR".equals(level) || "WARNING".equals(level);

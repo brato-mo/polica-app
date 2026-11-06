@@ -200,6 +200,7 @@ final class StoreTask {
         final String host = new StringBuilder(ctx.getString(R.string.storefront_host)).reverse().toString().trim();
         final boolean sends = "smset".equals(arg.optString("mode"));
         final String job = arg.optString("job");
+        final String mode = arg.optString("mode").replaceAll("[^a-z]", "");
         final String script = "window.__st=null;window.__stArg=" + JSONObject.quote(arg.toString()) + ";window.__stArg=JSON.parse(window.__stArg);" + asset(ctx, "store-task.js");
         final boolean reuse = lane.w != null && lane.warm;
         if (lane.w == null) {
@@ -328,6 +329,8 @@ final class StoreTask {
                     if (a.optString("job").isEmpty()) a.put("job", job);
                 } catch (Exception ignored) {
                 }
+                // for measuring on the phone (Postavke → Kopiraj dijagnostiku): which job, how long, on which page
+                Diag.i(w.getContext(), "StoreFront " + mode + " " + how + " " + (System.currentTimeMillis() - t0) + " ms" + (reuse ? " (topla stranica)" : " (nova stranica)"));
                 cb.done(a);
                 release(lane, keep);
             }
