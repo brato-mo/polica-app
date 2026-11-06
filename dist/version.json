@@ -1,7 +1,7 @@
 {
- "code": 58,
- "name": "1.57",
- "notes": "Prijedlozi danas: šta se isplati uraditi u odjelu (namještaj na DM bez zalihe, ukinuti sa SM/DM, AR, MYJYSK rokovi, najprodavaniji pri kraju zalihe, rasprodaja po vrijednosti, SM bez prodaje), sa dugmetom do ekrana gdje se rješava",
- "size": 1995597,
- "sha256": "913bb5c1f48bc371319f8b4c29077ad3e63e9448377d203dd4e5031a19432d2f"
+ "code": 60,
+ "name": "1.58",
+ "notes": "Sigurnije slanje Minus liste i Regulacije: zapis prije slanja, stanja (Potvrđeno, Djelimično, Neuspjelo, Ishod nepoznat – potrebna provjera), bez duplog slanja; redovi iz 1.57 na provjeri; ime i broj više nisu ugrađeni; bez backupa i sa sigurnim logovima; kopija podataka prije nadogradnje",
+ "size": 2016292,
+ "sha256": "79b9aad78dbfacc639163f3012a40c4de72437eb57684a9b2461201ecac88da3"
 }
