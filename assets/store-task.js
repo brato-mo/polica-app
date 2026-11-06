@@ -167,6 +167,7 @@
       {
         var seen = {};
         var list = a.concat(b).filter(function (x) { if (seen[x.num] || !mine(x)) return false; seen[x.num] = 1; return true; });
+        if (arg.nosucc) return { list: list, total: list.length };
         // the article's replacement number (substitution chain) that is still sold: its SM/DM may have to take over
         return inBatches(list, 6, function (x) {
           return get('/api/v1/article/masterdata?article=' + x.num + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SubstitutionChainSmDm').then(function (j) {

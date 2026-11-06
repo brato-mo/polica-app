@@ -2305,7 +2305,15 @@ function renderTop() {
 
 // ------------------------------------------------ SM i DM: values of the department's articles that go out (21, 81)
 
-S.sm = { busy: '', edit: {}, move: {}, st: ['21', '81'] };
+S.sm = { busy: '', edit: {}, move: {}, st: ['21', '81'], scope: 'dept' };
+// "Vrt": the whole garden assortment of StoreFront (category 9: garden furniture, garden cushions, parasols, ...),
+// every status, every article with an SM or a DM value; for putting the season's values to 0 at once
+const GARDEN_CAT = '9';
+const GARDEN_ST = ['01', '02', '11', '12', '21', '31', '32', '41', '42', '51', '81'];
+const smGarden = () => S.sm.scope === 'garden';
+/** The list the SM screen works on: the department's 21/81 or the garden's. */
+const smData = () => (smGarden() ? S.user.smGarden : S.user.smdm);
+function setSmData(v) { if (smGarden()) S.user.smGarden = v; else S.user.smdm = v; }
 
 /** What moving an old number's SM/DM to its replacement sends: the old one to 0, the new one at least as much. */
 function smMoveItems(x) {
@@ -2320,7 +2328,7 @@ function renderSmBar() {
   b.hidden = !S.plans.length || !A.storeTask;
   if (b.hidden) return;
   const m = S.user.smdm;
-  b.innerHTML = `${icon('list')}<span><b>SM i DM za status 21 i 81</b><small>${m && m.list ? `${m.list.length} ${plural(m.list.length, 'artikal', 'artikla', 'artikala')} još ima SM ili DM · ${esc(ageText(m.at))}` : 'Smjernica: kad je artikal ukinut, ukloni SM i DM'}</small></span><span class="go">${m && m.list ? 'Otvori' : 'Učitaj'}</span>`;
+  b.innerHTML = `${icon('list')}<span><b>SM i DM · odjel (21 i 81) i vrt</b><small>${m && m.list ? `${m.list.length} ${plural(m.list.length, 'artikal', 'artikla', 'artikala')} još ima SM ili DM · ${esc(ageText(m.at))}` : 'Smjernica: kad je artikal ukinut, ukloni SM i DM'}</small></span><span class="go">${m && m.list ? 'Otvori' : 'Učitaj'}</span>`;
 }
 
 function openSm() {
@@ -2329,7 +2337,12 @@ function openSm() {
   S.sm.result = null;
   go('smdm');
   renderSm();
-  const m = S.user.smdm;
+  smLoadIfOld();
+}
+
+function smLoadIfOld() {
+  const m = smData();
+  if (smGarden()) { if (!m || !m.list || Date.now() - m.at > 10 * 60000) loadSm(); return; }
   if (!m || !m.list || m.dept !== deptSig() || !deptGroups() || Date.now() - m.at > 10 * 60000) loadSm(); // the last read is shown at once
 }
 
@@ -2337,14 +2350,17 @@ function loadSm() {
   if (S.sm.busy) return;
   S.sm.busy = 'load';
   renderSm();
-  withDept(() => loadSm2());
+  if (smGarden()) loadSm2(); else withDept(() => loadSm2());
 }
 
 function loadSm2() {
-  const ok = stCall({ mode: 'smdm', cat: cfg().group || '5', st: S.sm.st, ...deptArg() }, (r) => {
+  const garden = smGarden();
+  const arg = garden ? { mode: 'smdm', cat: GARDEN_CAT, cats: [GARDEN_CAT], st: GARDEN_ST, nosucc: true } : { mode: 'smdm', cat: cfg().group || '5', st: S.sm.st, ...deptArg() };
+  const ok = stCall(arg, (r) => {
     S.sm.busy = '';
     if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
-      S.user.smdm = { v: 3, dept: deptSig(), at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30, succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null })) };
+      const d = { v: 3, dept: garden ? 'vrt' : deptSig(), at: Date.now(), list: r.res.list.map((x) => ({ num: x.num, name: x.name, st: x.st, unit: x.unit, stock: x.stock, sm: x.sm, dm: x.dm, cap: x.cap, sold30: x.sold30, succ: x.succ && /^\d{7}$/.test(x.succ.num) ? { num: x.succ.num, st: String(x.succ.st || ''), sm: +x.succ.sm || 0, dm: +x.succ.dm || 0, stock: +x.succ.stock || 0 } : null })) };
+      if (garden) S.user.smGarden = d; else S.user.smdm = d;
       saveUser();
     } else {
       toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'SM vrijednosti se nisu mogle učitati. Pokušaj ponovo.');
@@ -2357,9 +2373,10 @@ function loadSm2() {
 
 function smSend(items) {
   if (!items.length || S.sm.busy) return;
+  const garden = smGarden();
   const ok = stCall({ mode: 'smset', items }, (r) => {
     S.sm.busy = '';
-    const m = S.user.smdm;
+    const m = garden ? S.user.smGarden : S.user.smdm;
     const want = new Map(items.map((x) => [x.num, x]));
     if (r.how === 'ok' && r.res) {
       const done = new Set(r.res.done || []);
@@ -2384,7 +2401,8 @@ function smSend(items) {
 function renderSm() {
   const box = $('#smBody');
   if (!box) return;
-  const m = S.user.smdm;
+  const m = smData();
+  const garden = smGarden();
   const list = (m && m.list) || [];
   const busy = S.deptBusy ? '<p class="count-line"><i class="mj-busy"></i> Prvi put: tražim u StoreFrontu grupe proizvoda tvog odjela (iz planograma)…</p>' : S.sm.busy === 'load' ? '<p class="count-line"><i class="mj-busy"></i> Čitam SM vrijednosti iz StoreFronta…</p>'
     : S.sm.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
@@ -2416,10 +2434,16 @@ function renderSm() {
       ${succ}
     </div>`;
   }).join('');
-  box.innerHTML = `<button class="orders-bar au-master" type="button" data-au-master>${icon('chart')}<span><b>Master provjera</b><small>Sve SM i DM vrijednosti odjela: ukinuti sa SM/DM i zamjene, SM bez prodaje, najprodavaniji bez SM</small></span><span class="go">Pokreni</span></button>${intro}${deptChips('smdm')}${busy}${resLine}
-    <div class="top-head"><p class="count-line">${m ? `${esc(deptName())} · status ${S.sm.st.join(' i ')} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
+  const tabs = `<div class="chips sm-scope"><button class="chip" type="button" data-sm="scope" data-scope="dept" aria-pressed="${!garden}" ${dis}>Moj odjel · 21 i 81</button><button class="chip" type="button" data-sm="scope" data-scope="garden" aria-pressed="${garden}" ${dis}>Vrt · sve</button></div>`;
+  const head = garden
+    ? `${tabs}${busy}${resLine}`
+    : `<button class="orders-bar au-master" type="button" data-au-master>${icon('chart')}<span><b>Master provjera</b><small>Sve SM i DM vrijednosti odjela: ukinuti sa SM/DM i zamjene, SM bez prodaje, najprodavaniji bez SM</small></span><span class="go">Pokreni</span></button>${tabs}${intro}${deptChips('smdm')}${busy}${resLine}`;
+  const what = garden ? `Vrt (vrtni namještaj, vrtni jastuci, suncobrani…) · svi statusi` : `${esc(deptName())} · status ${S.sm.st.join(' i ')}`;
+  const none = garden ? '<p class="empty">Nijedan vrtni artikal nema SM ni DM.</p>' : '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM ni DM. Sve je po smjernici.</p>';
+  box.innerHTML = `${head}
+    <div class="top-head"><p class="count-line">${m ? `${what} · ${list.length} sa SM ili DM · ${esc(ageText(m.at))}` : ''}</p>
       <button class="text-btn" type="button" data-sm="reload" ${dis}>${icon('refresh')}Osvježi</button></div>
-    ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>Ukloni SM i DM za sve (${list.length})</button>` : m && !S.sm.busy ? '<p class="empty">Nijedan artikal sa statusom 21 ili 81 nema SM ni DM. Sve je po smjernici.</p>' : ''}
+    ${list.length ? `<button class="btn btn-primary btn-block" type="button" data-sm="all0" ${dis}>${garden ? `Sve vrtne SM i DM na 0 (${list.length})` : `Ukloni SM i DM za sve (${list.length})`}</button>` : m && !S.sm.busy ? none : ''}
     ${rows ? `<div class="sm-list">${rows}</div>` : ''}
     ${edits.length ? `<div class="sm-save"><button class="btn btn-primary btn-block" type="button" data-sm="save" ${dis}>Spremi promjene (${edits.length})</button></div>` : ''}`;
 }
@@ -2428,7 +2452,8 @@ async function onSmClick(t) {
   if (t.dataset.smZero) { S.sm.edit[t.dataset.smZero] = { sm: 0, dm: 0 }; delete S.sm.move[t.dataset.smZero]; S.sm.result = null; renderSm(); return; }
   if (t.dataset.smMove) { const n = t.dataset.smMove; if (S.sm.move[n]) delete S.sm.move[n]; else { S.sm.move[n] = true; delete S.sm.edit[n]; } S.sm.result = null; renderSm(); return; }
   const a = t.dataset.sm;
-  const list = (S.user.smdm && S.user.smdm.list) || [];
+  const list = (smData() && smData().list) || [];
+  if (a === 'scope') { if (S.sm.busy) return; S.sm.scope = t.dataset.scope === 'garden' ? 'garden' : 'dept'; S.sm.edit = {}; S.sm.move = {}; S.sm.result = null; renderSm(); smLoadIfOld(); return; }
   if (a === 'reload') { S.sm.result = null; loadSm(); return; }
   let items = [];
   let moves = 0;
@@ -2456,7 +2481,7 @@ async function onSmClick(t) {
   const olds = items.length - moves;
   const zero = items.filter((x) => x.sm === 0 && x.dm === 0).length;
   const go2 = a === 'all0' && list.some(smNeedsMove) ? true : await ask(`Promijeniti SM/DM za ${olds} ${plural(olds, 'artikal', 'artikla', 'artikala')}?`,
-    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? ` Za ${zero} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}${moves ? ` ${moves} ${plural(moves, 'zamjena dobija', 'zamjene dobijaju', 'zamjena dobija')} SM/DM starog broja.` : ''}</p>`,
+    `<p>Promjena se odmah sprema u StoreFront pod tvojom prijavom.${zero ? smGarden() ? ` Za ${zero} vrtnih artikala SM i DM idu na 0: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ` Za ${zero} se uklanjaju SM i DM, kako kaže smjernica za status 21: više ne ulaze u prijedlog narudžbe, a izloženi komadi se vraćaju u online zalihu.` : ''}${moves ? ` ${moves} ${plural(moves, 'zamjena dobija', 'zamjene dobijaju', 'zamjena dobija')} SM/DM starog broja.` : ''}</p>`,
     [{ label: 'Spremi u StoreFront', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
   if (go2) smSend(items);
 }
