@@ -1,7 +1,7 @@
 {
- "code": 64,
- "name": "1.62",
- "notes": "Prava slika artikla iz StoreFronta umjesto slike iz planograma (koja je nekad pripadala susjednom artiklu)",
+ "code": 65,
+ "name": "1.63",
+ "notes": "Skeniranje odmah pokazuje mjesto: aplikacija unaprijed uzme barkodove svih artikala iz tvojih planograma iz StoreFronta; ako StoreFront nađe tačno jedan artikal iz planograma, odmah ga otvori",
  "size": 2024484,
- "sha256": "12d403e5ddd1e0156dc8a715b9f5f8018d04b1a4c75405a57416ed587ecd6047"
+ "sha256": "1187611c7c453dd68e3966ade3f49c9bf026beb63abe83c758e0a7647c7cc363"
 }
