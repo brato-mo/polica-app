@@ -79,12 +79,23 @@ export function evidence(op, chk, slackMs = 2 * 60 * 1000) {
     if (!after.length) return 'none';
     return 'unclear';
   };
+  // every movement StoreFront shows for the article in that time, as it is: when (before / during / after the
+  // sending), how many, which kind, by whom (this user or someone else), and whether it is exactly the one expected
+  const moves = (art, q) => hist.filter((h) => h.art === art).sort((a, b) => a.t - b.t).map((h) => ({
+    t: h.t, q: h.q, type: h.type, mine: !!h.mine,
+    when: h.t < since - slackMs ? 'prije' : h.t <= until ? 'tokom' : 'poslije',
+    exact: h.q === q && !!h.mine && h.t >= since - slackMs && h.t <= until,
+  }));
   const lines = ((op && op.items) || []).map((it) => {
     const n = Math.abs(+it.qty);
     let minus = op.kind === 'adjust' ? 'skip' : look(it.num, n);
     // still on the Minus lista with the same minus: the Minus lista step did not go through for this line
-    if (minus !== 'skip' && minusNow[it.num] === +it.qty) minus = 'none';
-    return { num: it.num, target: it.target, minus, adjust: look(it.target, -n) };
+    const stillMinus = Object.prototype.hasOwnProperty.call(minusNow, it.num) ? minusNow[it.num] : null;
+    if (minus !== 'skip' && stillMinus === +it.qty) minus = 'none';
+    return {
+      num: it.num, target: it.target, minus, adjust: look(it.target, -n), stillMinus,
+      numMoves: op.kind === 'adjust' ? [] : moves(it.num, n), targetMoves: moves(it.target, -n),
+    };
   });
   const vals = lines.flatMap((l) => [l.minus, l.adjust]).filter((v) => v !== 'skip');
   const all = vals.length && vals.every((v) => v === 'seen') ? 'seen' : vals.length && vals.every((v) => v === 'none') ? 'none' : 'mixed';

@@ -1275,18 +1275,38 @@ function minusOpCard() {
   let more = '';
   if (op.state === 'unknown' && !op.resolved) {
     const ev = S.minusCheck && S.minusCheck.id === op.id ? S.minusCheck : null;
-    const W = { seen: 'vidi se jednom, tvojim imenom', none: 'ne vidi se', unclear: 'nejasno (više kretanja)', skip: '–' };
+    const tm = (t) => (t ? new Date(t).toLocaleString('bs-BA', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '–');
+    const STEPS = { start: 'čitanje Minus liste', check: 'provjera liste', user: 'provjera korisnika', minus: 'Minus lista', adjust: 'Regulacija zalihe' };
+    const http = op.http || {};
+    const httpTxt = (k) => (http[k] ? `HTTP ${http[k]}` : 'bez odgovora');
+    // what the phone itself knows about this sending, before anything is read from StoreFront
+    const facts = `<div class="op-facts">
+      <div><span>Počelo</span><b>${esc(tm(op.at))}</b></div>
+      <div><span>Završeno / prekinuto</span><b>${esc(tm(op.end))}</b></div>
+      <div><span>Stiglo do koraka</span><b>${esc(STEPS[op.step] || op.step || '–')}</b></div>
+      ${op.kind === 'adjust' ? '' : `<div><span>StoreFront za Minus listu</span><b>${esc(http.minus ? httpTxt('minus') : op.minusOk || op.step === 'adjust' ? 'prihvaćeno' : op.step === 'minus' ? 'bez odgovora' : 'nije poslano')}</b></div>`}
+      <div><span>StoreFront za Regulaciju</span><b>${esc(op.step === 'adjust' || op.kind === 'adjust' ? httpTxt('adjust') : 'nije poslano')}</b></div>
+      <div><span>Razlog</span><b>${esc({ mreza: 'veza prekinuta', timeout: 'isteklo vrijeme', prekinuto: 'aplikacija zatvorena ili prekinuta' }[op.why] || op.why || '–')}</b></div>
+    </div>`;
+    const MV = { '911': 'smanjenje (911)', '912': 'povećanje (912)', '921': '921', '922': '922', '251': 'prodaja', '252': 'povrat', '101': 'prijem' };
+    const moveList = (list, want) => (list.length ? `<ul class="op-moves">${list.map((m) => `<li class="${m.exact ? 'is-exact' : ''}">${esc(tm(m.t))} · <b>${m.q > 0 ? '+' : ''}${esc(mq(m.q))}</b> · ${esc(MV[m.type] || m.type || '?')} · ${m.mine ? 'tvojim korisnikom' : 'drugi korisnik'} · ${esc(m.when)} slanja${m.exact ? ' · <b>tačno očekivano</b>' : ''}</li>`).join('')}</ul>`
+      : `<p class="op-none">Nema kretanja od 6 sati prije slanja (očekivano ${esc(want)}).</p>`);
+    const W = { seen: 'tačno jedno očekivano kretanje', none: 'očekivano kretanje se ne vidi', unclear: 'nejasno: više mogućih ili isto i prije slanja', skip: '' };
     const rows = (op.items || []).map((it) => {
+      const n = Math.abs(it.qty);
       const l = ev && ev.res && ev.res.lines.find((x) => x.num === it.num);
-      const what = op.kind === 'adjust' ? `<b>${esc(it.target)}</b> ukloni ${mq(Math.abs(it.qty))} · kod 53`
-        : `<b>${esc(it.num)}</b> ${mq(it.qty)} → 0 · <b>${esc(it.target)}</b> ukloni ${mq(Math.abs(it.qty))}`;
-      const seen = l ? (op.kind === 'adjust' ? `Regulacija: ${W[l.adjust]}` : `Minus lista: ${W[l.minus]} · Regulacija: ${W[l.adjust]}`) : '';
-      return `<div class="mp-row"><div class="mp-txt"><span>${what}</span>${seen ? `<small>${seen}</small>` : ''}</div></div>`;
+      const what = op.kind === 'adjust' ? `<b>${esc(it.target)}</b> ukloni ${mq(n)} · kod 53`
+        : `<b>${esc(it.num)}</b> ${mq(it.qty)} → 0 · <b>${esc(it.target)}</b> ukloni ${mq(n)}`;
+      if (!l) return `<div class="mp-row"><div class="mp-txt"><span>${what}</span></div></div>`;
+      const minusPart = op.kind === 'adjust' ? '' : `<div class="op-ev"><b>Minus lista ${esc(it.num)}</b> (očekivano +${esc(mq(n))}): ${esc(W[l.minus])}
+          <small>Sada na Minus listi: ${l.stillMinus == null ? 'nije na listi' : esc(mq(l.stillMinus))}</small>${moveList(l.numMoves, '+' + mq(n))}</div>`;
+      return `<div class="mp-row"><div class="mp-txt"><span>${what}</span>${minusPart}
+        <div class="op-ev"><b>Regulacija ${esc(it.target)}</b> (očekivano -${esc(mq(n))}): ${esc(W[l.adjust])}${moveList(l.targetMoves, '-' + mq(n))}</div></div></div>`;
     }).join('');
     const evText = ev ? (ev.busy ? '<p class="count-line"><i class="mj-busy"></i> Čitam historiju zalihe iz StoreFronta…</p>'
       : ev.err ? `<p class="att-from">Provjera nije uspjela (${esc(ev.err)}). Pogledaj u StoreFrontu.</p>`
-        : `<p class="att-from">${ev.res.all === 'seen' ? 'U historiji zalihe se vidi po jedno kretanje tvojim imenom za svaki red. To nije dokaz: provjeri komentare u StoreFrontu.' : ev.res.all === 'none' ? 'U historiji zalihe se ne vidi ništa od ovoga. Odgovor StoreFronta može kasniti; pogledaj i u StoreFrontu.' : 'Dio se vidi, dio ne. Provjeri red po red u StoreFrontu.'}</p>`) : '';
-    more = `${rows}${evText}
+        : `<p class="att-from op-warnline">Ovo nije dokaz. StoreFront ne daje broj operacije, a historija zalihe nema ni komentar ni razlog (53/103). Isto kretanje je mogao napraviti neko drugi ili ti ručno. Uporedi u StoreFrontu, pa odluči. Pročitano ${esc(tm(ev.at))}.</p>`) : '';
+    more = `${facts}${rows}${evText}
       <button class="btn btn-block" type="button" data-op-check ${ev && ev.busy ? 'disabled' : ''}>Provjeri u StoreFrontu (samo čitanje)</button>
       <div class="mp-head"><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
       <p class="att-from">Kad provjeriš u StoreFrontu, reci šta si našao. Tek tada se može slati ponovo.</p>
@@ -1302,7 +1322,7 @@ function minusOpCheck() {
   if (!op || op.state !== 'unknown') return;
   S.minusCheck = { id: op.id, busy: true };
   const ok = stCall({ mode: 'opcheck', items: (op.items || []).map((x) => ({ num: x.num, target: x.target })), since: op.at }, (r) => {
-    S.minusCheck = r.how === 'ok' ? { id: op.id, res: minusop.evidence(op, r.res) } : { id: op.id, err: r.how === 'login' ? 'traži prijavu' : 'greška' };
+    S.minusCheck = r.how === 'ok' ? { id: op.id, at: Date.now(), res: minusop.evidence(op, r.res) } : { id: op.id, err: r.how === 'login' ? 'traži prijavu' : 'greška' };
     if (top().id === 'minus') renderMinus();
   });
   if (!ok) S.minusCheck = { id: op.id, err: 'ova verzija to ne zna' };
@@ -4273,7 +4293,7 @@ function bind() {
       renderPlans();
       return;
     }
-    if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
+    if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst || t.dataset.sim) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
     if (t.id === 'minusBar') { openMinus(); return; }
     if (t.id === 'tipsBar') { openTips(); return; }

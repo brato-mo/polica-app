@@ -39,7 +39,10 @@ test('evidence: exactly one own movement of that quantity after the start is "se
     minus: {},
   });
   assert.equal(e.all, 'seen');
-  assert.deepEqual(e.lines[0], { num: '1000001', target: '1000002', minus: 'seen', adjust: 'seen' });
+  assert.deepEqual([e.lines[0].minus, e.lines[0].adjust], ['seen', 'seen']);
+  assert.equal(e.lines[0].targetMoves.length, 1);
+  assert.equal(e.lines[0].targetMoves[0].exact, true);
+  assert.equal(e.lines[0].targetMoves[0].when, 'tokom');
 });
 
 test('evidence: nothing found, someone else, other quantity, too late = not seen', () => {
@@ -69,4 +72,17 @@ test('evidence for a Regulacija-only sending looks at the replacement only', () 
   const e = evidence(op({ state: 'unknown', kind: 'adjust' }), { hist: [mv('1000002', -2, 5000), mv('1000004', -1, 5000)], minus: {} });
   assert.equal(e.lines[0].minus, 'skip');
   assert.equal(e.all, 'seen');
+});
+
+test('evidence lists every movement as it is, near misses marked as not exact', () => {
+  const e = evidence(op({ state: 'unknown' }), {
+    hist: [mv('1000002', -2, -3 * 3600000), mv('1000002', -3, 5000), mv('1000002', -2, 5000, false), mv('1000002', -2, 40 * 60000)],
+    minus: { '1000001': 0 },
+  });
+  const m = e.lines[0].targetMoves;
+  assert.deepEqual(m.map((x) => x.when), ['prije', 'tokom', 'tokom', 'poslije']);
+  assert.deepEqual(m.map((x) => x.exact), [false, false, false, false], 'other quantity, other user, too late: none counts');
+  assert.equal(e.lines[0].adjust, 'none');
+  assert.equal(e.lines[0].stillMinus, 0);
+  assert.equal(e.lines[1].stillMinus, null);
 });

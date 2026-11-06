@@ -139,6 +139,7 @@ final class OpLog {
             if (result.has("sent")) o.put("sent", result.opt("sent"));
             if (result.has("skipped")) o.put("skipped", result.opt("skipped"));
             if (result.has("http")) o.put("http", result.opt("http"));
+            if (result.has("minusOk")) o.put("minusOk", result.optBoolean("minusOk"));
             if (result.has("resp")) o.put("resp", result.opt("resp"));
             write(ctx, o);
             return o;
