@@ -6,6 +6,7 @@ import * as news from './news.js';
 import * as ar from './ar.js';
 import * as smcheck from './smcheck.js';
 import * as tips from './tips.js';
+import * as minusop from './minusop.js';
 
 const A = window.Android;
 const $ = (s, el = document) => el.querySelector(s);
@@ -1233,7 +1234,90 @@ function renderMinusBar() {
   const map = minusTargets(m.items);
   const ready = m.items.filter((x) => (map.get(x.num) || {}).target).length;
   const pend = (S.user.minusPending || []).length;
-  b.innerHTML = `${ic}<span><b>Minus lista: ${m.items.length}</b><small>${ready} spremno za ispravku${pend ? ` · ${pend} čeka Regulaciju` : ''} · ${esc(ageText(m.at))}</small></span><span class="go">Otvori</span>`;
+  const open = minusop.locks(S.minusOp) ? ' · <b>ishod nepoznat, provjeri</b>' : '';
+  b.innerHTML = `${ic}<span><b>Minus lista: ${m.items.length}</b><small>${ready} spremno za ispravku${pend ? ` · ${pend} čeka Regulaciju` : ''}${open} · ${esc(ageText(m.at))}</small></span><span class="go">Otvori</span>`;
+}
+
+/** The record of the last sending, kept by the phone (survives closing the app and restarts). */
+function minusOpNow() {
+  try { const t = A.minusOp && A.minusOp(); S.minusOp = t ? JSON.parse(t) : null; } catch (e) { /* older shell: no record */ }
+  return S.minusOp || null;
+}
+
+/** The status card of the last sending, with the read-only check and the employee's own decision for an unknown one. */
+function minusOpCard() {
+  const op = S.minusOp;
+  const d = minusop.describe(op);
+  if (!d) return '';
+  // an old finished sending is not worth a card; an open one always is
+  if (!d.lock && op.state !== 'unknown' && Date.now() - (op.end || op.at || 0) > 12 * 3600000) return '';
+  const when = op.at ? new Date(op.at).toLocaleString('bs-BA', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  let more = '';
+  if (op.state === 'unknown' && !op.resolved) {
+    const ev = S.minusCheck && S.minusCheck.id === op.id ? S.minusCheck : null;
+    const W = { seen: 'vidi se jednom, tvojim imenom', none: 'ne vidi se', unclear: 'nejasno (više kretanja)', skip: '–' };
+    const rows = (op.items || []).map((it) => {
+      const l = ev && ev.res && ev.res.lines.find((x) => x.num === it.num);
+      const what = op.kind === 'adjust' ? `<b>${esc(it.target)}</b> ukloni ${mq(Math.abs(it.qty))} · kod 53`
+        : `<b>${esc(it.num)}</b> ${mq(it.qty)} → 0 · <b>${esc(it.target)}</b> ukloni ${mq(Math.abs(it.qty))}`;
+      const seen = l ? (op.kind === 'adjust' ? `Regulacija: ${W[l.adjust]}` : `Minus lista: ${W[l.minus]} · Regulacija: ${W[l.adjust]}`) : '';
+      return `<div class="mp-row"><div class="mp-txt"><span>${what}</span>${seen ? `<small>${seen}</small>` : ''}</div></div>`;
+    }).join('');
+    const evText = ev ? (ev.busy ? '<p class="count-line"><i class="mj-busy"></i> Čitam historiju zalihe iz StoreFronta…</p>'
+      : ev.err ? `<p class="att-from">Provjera nije uspjela (${esc(ev.err)}). Pogledaj u StoreFrontu.</p>`
+        : `<p class="att-from">${ev.res.all === 'seen' ? 'U historiji zalihe se vidi po jedno kretanje tvojim imenom za svaki red. To nije dokaz: provjeri komentare u StoreFrontu.' : ev.res.all === 'none' ? 'U historiji zalihe se ne vidi ništa od ovoga. Odgovor StoreFronta može kasniti; pogledaj i u StoreFrontu.' : 'Dio se vidi, dio ne. Provjeri red po red u StoreFrontu.'}</p>`) : '';
+    more = `${rows}${evText}
+      <button class="btn btn-block" type="button" data-op-check ${ev && ev.busy ? 'disabled' : ''}>Provjeri u StoreFrontu (samo čitanje)</button>
+      <div class="mp-head"><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
+      <p class="att-from">Kad provjeriš u StoreFrontu, reci šta si našao. Tek tada se može slati ponovo.</p>
+      <button class="btn btn-block" type="button" data-op-resolve="done">Provjerio sam: prošlo je</button>
+      <button class="btn btn-block" type="button" data-op-resolve="notdone">Provjerio sam: nije prošlo</button>`;
+  }
+  return `<section class="mj-sec mp op-card op-${d.tone}" aria-live="polite"><div class="sec-head"><h2>${esc(d.label)}</h2><small>${esc(when)}</small></div>
+    <p class="att-from">${esc(d.text)}</p>${more}</section>`;
+}
+
+function minusOpCheck() {
+  const op = S.minusOp;
+  if (!op || op.state !== 'unknown') return;
+  S.minusCheck = { id: op.id, busy: true };
+  const ok = stCall({ mode: 'opcheck', items: (op.items || []).map((x) => ({ num: x.num, target: x.target })), since: op.at }, (r) => {
+    S.minusCheck = r.how === 'ok' ? { id: op.id, res: minusop.evidence(op, r.res) } : { id: op.id, err: r.how === 'login' ? 'traži prijavu' : 'greška' };
+    if (top().id === 'minus') renderMinus();
+  });
+  if (!ok) S.minusCheck = { id: op.id, err: 'ova verzija to ne zna' };
+  renderMinus();
+}
+
+/** The employee's own decision on an unknown sending, after he checked it in StoreFront. */
+function minusOpResolve(how) {
+  const op = S.minusOp;
+  if (!op || op.state !== 'unknown' || !A.minusOpResolve) return;
+  let rec = null;
+  try { const t = A.minusOpResolve(op.id, how); rec = t ? JSON.parse(t) : null; } catch (e) { rec = null; }
+  if (!rec) { toast('Nije zapisano. Pokušaj ponovo.'); return; }
+  S.minusOp = rec;
+  const items = rec.items || [];
+  if (how === 'done') {
+    const d = S.user.minusDone || (S.user.minusDone = {});
+    for (const x of items) {
+      if (rec.kind !== 'adjust') d[`${x.num}|${x.qty}|1`] = Date.now();
+      d[`${x.num}|${x.qty}|2`] = Date.now();
+    }
+    if (rec.kind === 'adjust') {
+      const nums = new Set(items.map((x) => x.num));
+      S.user.minusPending = (S.user.minusPending || []).filter((p) => !nums.has(p.num));
+    }
+  } else if (rec.kind !== 'adjust' && rec.step === 'adjust') {
+    // Minus lista was accepted, Regulacija did not go through: only Regulacija is left, sent when the employee taps it
+    const have = new Set((S.user.minusPending || []).map((p) => p.num));
+    S.user.minusPending = [...(S.user.minusPending || []), ...items.filter((x) => !have.has(x.num))];
+  }
+  saveUser();
+  toast(how === 'done' ? 'Zapisano: prošlo je.' : 'Zapisano: nije prošlo. Slanje je ponovo moguće.');
+  S.minusCheck = null;
+  renderMinus();
+  setTimeout(loadMinus, 500);
 }
 
 function loadMinus() {
@@ -1364,7 +1448,7 @@ function minusPlan(list) {
       <button class="text-btn" type="button" data-mp-copy="${esc(com)}">Kopiraj</button></div>`;
   };
   const left = (step) => one.filter((x) => !done[key(x, step)]).length;
-  const busy = S.minusApplying ? 'disabled' : '';
+  const busy = S.minusApplying || minusop.locks(S.minusOp) ? 'disabled' : '';
   const pend = pending.length ? `<div class="mp-step mp-pending"><div class="mp-head"><b>Čeka Regulaciju</b><small>${pending.length}</small></div>
       <p class="att-from">Ovi artikli su na Minus listi već vraćeni na 0, ali Regulacija zalihe nije prošla:</p>
       ${pending.map((p) => `<div class="mp-row"><div class="mp-txt"><span><b>${esc(p.target)}</b> ukloni <b>${mq(Math.abs(p.qty))}</b> · kod 53</span><small>${esc(p.c2)}</small></div></div>`).join('')}
@@ -1394,29 +1478,37 @@ function minusApplyItems() {
   });
 }
 
-window.onMinusApplying = () => { S.minusApplying = true; if (top().id === 'minus') renderMinus(); };
+window.onMinusApplying = () => { S.minusApplying = true; minusOpNow(); if (top().id === 'minus') renderMinus(); };
 window.onMinusApplied = (r) => {
   S.minusApplying = false;
+  if (r && r.op) S.minusOp = r.op; else minusOpNow();
   const W = { empty: 'Upiši SAP HR broj i lozinku.', auth: 'StoreFront nije prihvatio SAP HR broj ili lozinku. Ništa nije poslano.', nonstore: 'StoreFront kaže da korisnik nije iz prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', wrongstore: 'StoreFront kaže da korisnik nije iz ove prodavnice. Ništa nije poslano: uradi to u StoreFrontu.', login: 'StoreFront traži prijavu. Ništa nije poslano.', nouser: 'StoreFront nije dao tvoj SAP HR broj. Ništa nije poslano: tapni „Upiši ručno“.' };
   if (r && r.kept && r.why === 'auth') W.auth = 'StoreFront nije prihvatio lozinku iz postavki za potvrdu. Ništa nije poslano. Sljedeći put je upiši ručno, ili je promijeni u Postavke → Prijava.';
   const sentItems = S.minusSending || [];
   const adjustOnly = !!S.minusSendingAdjust;
   S.minusSending = null;
   S.minusSendingAdjust = false;
-  if (!r || r.state !== 'ok') {
+  if (r && r.state === 'locked') {
+    toast(r.why === 'busy' ? 'Slanje je već u toku.' : r.why === 'record' ? 'Zapis slanja se nije mogao spremiti. Ništa nije poslano.' : 'Prethodno slanje ima nepoznat ishod. Prvo ga provjeri, pa tek onda šalji ponovo.');
+  } else if (r && r.state === 'unknown') {
+    // a step was sent and its answer never came: nothing is marked done, nothing is kept for sending again
+    toast('Ishod nepoznat – potrebna provjera. Ništa se neće slati dok ne provjeriš.');
+  } else if (!r || r.state !== 'ok') {
     const why = r && r.why || '';
-    let msg = W[why] || 'Slanje nije uspjelo. Ništa nije poslano.';
+    let msg = W[why] || (r && r.step === 'minus' ? 'StoreFront je odbio Minus listu. Ništa nije promijenjeno.' : 'Slanje nije uspjelo. Ništa nije poslano.');
     if (!adjustOnly && (/^adjust/.test(why) || r && r.step === 'adjust')) {
-      // Minus lista went through: keep the Regulacija lines to send again on their own
+      // Minus lista went through (StoreFront accepted it), Regulacija was refused: keep those lines to send again
+      // on their own, when the employee taps it
       const sent = new Set(r && r.sent ? r.sent : sentItems.map((i) => i.num));
-      S.user.minusPending = [...(S.user.minusPending || []), ...sentItems.filter((i) => sent.has(i.num))];
+      const have = new Set((S.user.minusPending || []).map((p) => p.num));
+      S.user.minusPending = [...(S.user.minusPending || []), ...sentItems.filter((i) => sent.has(i.num) && !have.has(i.num))];
       saveUser();
-      msg = 'Minus lista je ispravljena, ali Regulacija zalihe nije prošla. Tapni „Pošalji samo Regulaciju“ ili je uradi u StoreFrontu.';
-    } else if (r && r.step === 'minus' && /^minus|timeout/.test(why)) msg = 'Nije sigurno da je Minus lista ispravljena. Osvježi listu i provjeri prije ponovnog slanja.';
+      msg = 'Minus lista je ispravljena, ali StoreFront je odbio Regulaciju zalihe. Tapni „Pošalji samo Regulaciju“ ili je uradi u StoreFrontu.';
+    }
     toast(msg);
   } else {
     const n = (r.sent || []).length, k = (r.skipped || []).length;
-    toast(`${n ? `Poslano: ${n} ${plural(n, adjustOnly ? 'regulacija' : 'zamjena', adjustOnly ? 'regulacije' : 'zamjene', adjustOnly ? 'regulacija' : 'zamjena')}.` : 'Ništa nije poslano.'}${k ? ` Preskočeno ${k} (promijenilo se u međuvremenu).` : ''}`);
+    toast(`${n ? `Potvrđeno u StoreFrontu: ${n} ${plural(n, adjustOnly ? 'regulacija' : 'zamjena', adjustOnly ? 'regulacije' : 'zamjene', adjustOnly ? 'regulacija' : 'zamjena')}.` : 'Ništa nije poslano.'}${k ? ` Preskočeno ${k} (promijenilo se u međuvremenu).` : ''}`);
     if (adjustOnly) {
       const sent = new Set(r.sent || []);
       S.user.minusPending = (S.user.minusPending || []).filter((p) => !sent.has(p.num));
@@ -1432,11 +1524,19 @@ window.onMinusApplied = (r) => {
     setTimeout(loadMinus, 2500);
   }
   if (top().id === 'minus') renderMinus();
+  renderMinusBar();
 };
 
 function onMinusClick(ev) {
-  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page],[data-mp-apply],[data-mp-apply-adjust],[data-mp-pick],[data-mp-pending-clear]');
+  const t = ev.target.closest('[data-num],[data-mp-done],[data-mp-copy],[data-sf-page],[data-mp-apply],[data-mp-apply-adjust],[data-mp-pick],[data-mp-pending-clear],[data-op-check],[data-op-resolve]');
   if (!t) return;
+  if ('opCheck' in t.dataset) { minusOpCheck(); return; }
+  if (t.dataset.opResolve) { minusOpResolve(t.dataset.opResolve); return; }
+  if (('mpApply' in t.dataset || 'mpApplyAdjust' in t.dataset) && minusop.locks(minusOpNow())) {
+    toast('Prethodno slanje ima nepoznat ishod. Prvo ga provjeri.');
+    renderMinus();
+    return;
+  }
   if ('mpApply' in t.dataset) {
     if (S.minusApplying) return;
     if (!S.user.minus || Date.now() - (S.user.minus.at || 0) > 15 * 60 * 1000) { toast('Lista je starija od 15 minuta. Osvježi je pa potvrdi.'); loadMinus(); return; }
@@ -1485,13 +1585,15 @@ function renderMinus() {
   if (!box) return;
   const m = S.user.minus;
   const busy = S.minusBusy ? '<p class="count-line"><i class="mj-busy"></i> Čitam Minus listu iz StoreFronta…</p>' : '';
-  if (!m || !m.items) { box.innerHTML = busy || '<p class="empty">Minus lista još nije učitana. Tapni osvježi gore desno.</p>'; return; }
+  if (!m || !m.items) { minusOpNow(); box.innerHTML = (busy || '<p class="empty">Minus lista još nije učitana. Tapni osvježi gore desno.</p>') + minusOpCard(); return; }
   const items = m.items.slice().sort((a, b) => a.qty - b.qty);
   S.minusMap = minusTargets(items);
+  minusOpNow();
   const ready = items.filter((x) => minusTarget(x));
   const decide = items.filter((x) => chainOf(x).length && !minusTarget(x));
   const noSub = items.filter((x) => !chainOf(x).length);
   box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
+    ${minusOpCard()}
     ${minusPlan(items)}
     ${decide.length ? `<section class="mj-sec"><div class="sec-head"><h2>Treba tvoja odluka</h2><small>${decide.length}</small></div>
       <div class="mp-step">${decide.map(minusDecideRow).join('')}</div></section>` : ''}
@@ -4231,6 +4333,7 @@ function boot() {
   }
   syncWatch();
   syncMyjysk(false);
+  minusOpNow();
   renderHome();
   if (gateNeeded()) showGate();
   else { try { if (A.loginState && A.loginState() === 'refused') setTimeout(() => toast('StoreFront nije prihvatio sačuvanu lozinku. Upiši je ponovo u Postavke → Prijava.'), 1500); } catch (e) { /* older shell */ } }

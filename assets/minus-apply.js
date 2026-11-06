@@ -26,7 +26,37 @@
     return r.json();
   }
   function done(o) { user = pass = ''; window.__mx = o; }
-  var store = '', catalog = '';
+  // A request that writes (Minus lista, Regulacija zalihe): StoreFront's answer decides what is known.
+  //   2xx           accepted
+  //   4xx           refused, nothing written by this request (a definite failure)
+  //   5xx / no answer (network dropped, page cut off)  the request may have been carried out: UNKNOWN
+  // Never sent again on its own.
+  var UNKNOWN = {};
+  function write(step, body) {
+    window.__mx.step = step;
+    return req('POST', '/api/v1/stock-adjustments', body).then(function (r) {
+      (window.__mx.http || (window.__mx.http = {}))[step] = r.status;
+      if (r.ok) {
+        if (typeof r.text !== 'function') return null;
+        // what StoreFront answers is kept only as its shape (names of fields, no values): it shows whether an
+        // answer carries an id of the correction that could be looked up later
+        return r.text().then(function (t) {
+          try {
+            var j = JSON.parse(t);
+            var o = Array.isArray(j) ? j[0] : j;
+            (window.__mx.resp || (window.__mx.resp = {}))[step] = { arr: Array.isArray(j), keys: o && typeof o === 'object' ? Object.keys(o).slice(0, 20) : [] };
+          } catch (e) { /* empty or not JSON: fine */ }
+        }, function () {});
+      }
+      if (r.status >= 500) { var u = new Error('http ' + r.status); u.unknown = UNKNOWN; throw u; }
+      throw step + ' ' + r.status;
+    }, function (e) {
+      var u = new Error('mreza');
+      u.unknown = UNKNOWN; // the request left (or may have left) the phone; the answer never came
+      throw u;
+    });
+  }
+  var store = '', catalog = '', skipped = [];
   req('GET', '/api/v1/websapapi/user-details').then(json).then(function (u) {
     var ud = u && u.userDetails;
     var si = ud && ud.storeInfo;
@@ -56,8 +86,8 @@
     }));
   }).then(function (checked) {
     var go = checked.filter(function (x) { return x.ok; }).map(function (x) { return x.it; });
-    var skipped = checked.filter(function (x) { return !x.ok; }).map(function (x) { return { num: x.it.num, why: x.why }; });
-    if (!go.length) { done({ state: 'ok', sent: [], skipped: skipped }); return; }
+    skipped = checked.filter(function (x) { return !x.ok; }).map(function (x) { return { num: x.it.num, why: x.why }; });
+    if (!go.length) { done({ state: 'ok', step: 'check', sent: [], skipped: skipped }); return; }
     window.__mx.step = 'user';
     // the same checks StoreFront's approve dialog makes, in the same order
     return req('POST', '/api/v1/validate-sap-user/validate-non-store-user', { username: user }).then(function (r) {
@@ -72,29 +102,36 @@
       if (r.status === 401) throw 'auth';
       if (!r.ok) throw 'http ' + r.status;
       window.__mx.sent = go.map(function (it) { return it.num; });
-      if (ADJUST_ONLY) return { ok: true };
-      window.__mx.step = 'minus';
+      if (ADJUST_ONLY) return null;
       // 1. Minus lista: the number in minus counted 0, as the Minus lista page sends it (reason 103, quantity =
       // counted - stock)
-      return req('POST', '/api/v1/stock-adjustments', {
+      return write('minus', {
         username: user, password: pass, storeId: store, module: 'MINUS_LIST',
         stockAdjustments: go.map(function (it) { return { article: it.num, quantity: 0 - it.qty, reasonCode: '103', comment: s(it.c1, 50) }; }),
       });
-    }).then(function (r) {
-      if (!r.ok) throw 'minus ' + r.status;
-      window.__mx.step = 'adjust';
+    }).then(function () {
+      if (window.__mx.state !== 'busy') return; // nothing was left to send
+      window.__mx.minusOk = !ADJUST_ONLY;
       // 2. Regulacija zalihe: the replacement number down by the same, reason 53
-      return req('POST', '/api/v1/stock-adjustments', {
+      return write('adjust', {
         username: user, password: pass, storeId: store, module: 'STOCK_ADJUSTMENT',
         stockAdjustments: go.map(function (it) { return { article: it.target, quantity: it.qty, reasonCode: '53', comment: s(it.c2, 50) }; }),
-      }).then(function (r2) {
-        if (!r2.ok) throw 'adjust ' + r2.status;
-        done({ state: 'ok', sent: go.map(function (it) { return it.num; }), skipped: skipped });
+      }).then(function () {
+        var m = window.__mx;
+        done({ state: 'ok', step: 'adjust', sent: go.map(function (it) { return it.num; }), skipped: skipped, http: m.http, resp: m.resp });
       });
     });
   }).catch(function (e) {
-    var step = window.__mx && window.__mx.step;
-    var sent = window.__mx && window.__mx.sent;
-    done({ state: 'error', why: s(e, 40), step: step, sent: step === 'adjust' ? sent : undefined });
+    var m = window.__mx || {};
+    var step = m.step;
+    var unknown = !!(e && e.unknown === UNKNOWN);
+    var why = unknown ? s(e.message, 40) : s(e && e.message ? e.message : e, 40);
+    done({
+      state: unknown ? 'unknown' : 'error', why: why, step: step, minusOk: !!m.minusOk, http: m.http, resp: m.resp,
+      // the lines this sending was about, once the user checks passed (refused at the Regulacija step: the
+      // Minus lista part of these went through)
+      sent: step === 'minus' || step === 'adjust' ? m.sent : undefined,
+      skipped: skipped,
+    });
   });
 })();

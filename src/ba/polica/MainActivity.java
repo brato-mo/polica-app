@@ -652,6 +652,12 @@ public class MainActivity extends Activity {
      */
     private void showMinusApply(final JSONArray items, final boolean adjustOnly, boolean byHand) {
         if (applying) return;
+        String why = OpLog.blocked(this);
+        if (why != null) {
+            // a sending runs, or the last one has an unknown outcome: nothing new until it is checked
+            runJs("window.onMinusApplied&&onMinusApplied({state:'locked',why:'" + why + "'})");
+            return;
+        }
         final android.content.SharedPreferences hp = getSharedPreferences("sap", MODE_PRIVATE);
         final String[] kept = Secret.load(this);
         final boolean useKept = !byHand && kept != null && !hp.getBoolean(SAP_KEPT_BAD, false);
@@ -728,12 +734,28 @@ public class MainActivity extends Activity {
                         }
                         hp.edit().putString("hr", u).apply(); // the number only, never the password
                     }
+                    // the record is written before anything is sent; no record, no sending
+                    final String opId = OpLog.begin(MainActivity.this, adjustOnly ? "adjust" : "both", items);
+                    if (opId == null) {
+                        runJs("window.onMinusApplied&&onMinusApplied({state:'locked',why:'" + (OpLog.blocked(MainActivity.this) == null ? "record" : OpLog.blocked(MainActivity.this)) + "'})");
+                        return;
+                    }
                     applying = true;
                     runJs("window.onMinusApplying&&onMinusApplying()");
                     MinusApply.run(MainActivity.this, (android.view.ViewGroup) getWindow().getDecorView(), u, p, items, adjustOnly, new MinusApply.Callback() {
                         @Override
+                        public void step(String st) {
+                            OpLog.step(MainActivity.this, opId, st);
+                        }
+
+                        @Override
                         public void done(JSONObject result) {
                             applying = false;
+                            JSONObject rec = OpLog.end(MainActivity.this, opId, result);
+                            try {
+                                if (rec != null) result.put("op", rec);
+                            } catch (Exception ignored) {
+                            }
                             try {
                                 if (useKept) result.put("kept", true);
                                 // the kept password was refused as approver: next time it is typed by hand (no second
@@ -797,6 +819,25 @@ public class MainActivity extends Activity {
                     showMinusApply(items, false);
                 }
             });
+        }
+
+        /** The record of the last sending (see OpLog), or "" when there is none. */
+        @JavascriptInterface
+        public String minusOp() {
+            JSONObject o = OpLog.read(MainActivity.this);
+            if (o == null) return "";
+            try {
+                o.put("live", applying);
+            } catch (Exception ignored) {
+            }
+            return o.toString();
+        }
+
+        /** The employee checked the sending with an unknown outcome in StoreFront: "done" or "notdone". */
+        @JavascriptInterface
+        public String minusOpResolve(String id, String how) {
+            JSONObject o = OpLog.resolve(MainActivity.this, String.valueOf(id), String.valueOf(how));
+            return o == null ? "" : o.toString();
         }
 
         /** Only Regulacija zalihe, for lines whose Minus lista part went through earlier. Answer: window.onMinusApplied. */
@@ -950,13 +991,13 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean writeText(String name, String text) {
-            if (!safe(name) || text == null) return false;
+            if (!safe(name) || text == null || OpLog.FILE.equals(name)) return false; // the sending record is the app's own
             return writeAtomic(new File(dir("data"), name), text.getBytes(StandardCharsets.UTF_8));
         }
 
         @JavascriptInterface
         public boolean deleteText(String name) {
-            if (!safe(name)) return false;
+            if (!safe(name) || OpLog.FILE.equals(name)) return false;
             File f = new File(dir("data"), name);
             return !f.exists() || f.delete();
         }

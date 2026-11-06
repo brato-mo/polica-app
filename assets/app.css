@@ -1136,6 +1136,16 @@ button.code-chip:active { transform: scale(.96); }
 .mp-picks { margin: 6px 0 2px; }
 .mp-pending { border: 1.5px solid var(--danger); }
 .mp-pending .mp-apply, .mp-pending .text-btn { margin: 8px 14px 12px; width: auto; }
+/* the last sending's state: Potvrđeno, Djelimično, Neuspjelo, Ishod nepoznat */
+.op-card { padding: 2px 14px 12px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-1); margin-bottom: 14px; border: 1.5px solid var(--line); }
+.op-card .sec-head { padding-top: 10px; }
+.op-card .btn { margin: 6px 0; }
+.op-card .mp-row { padding: 10px 0; }
+.op-card .mp-head { padding: 6px 0; border-bottom: 0; }
+.op-ok { border-color: var(--primary); }
+.op-warn { border-color: var(--spot); }
+.op-bad { border-color: var(--danger); background: var(--danger-soft); }
+.op-busy { border-color: var(--primary); }
 
 /* customer orders: compact view and the view switch */
 .ord-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }

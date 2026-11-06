@@ -28,6 +28,9 @@ import java.io.InputStream;
 final class MinusApply {
     interface Callback {
         void done(JSONObject result);
+
+        /** The step the page reached (start, user, minus, adjust), as it changes. */
+        void step(String step);
     }
 
     private MinusApply() {
@@ -45,6 +48,17 @@ final class MinusApply {
         JSONObject o = new JSONObject();
         try {
             o.put("state", "error");
+            o.put("why", why);
+        } catch (Exception ignored) {
+        }
+        return o;
+    }
+
+    static JSONObject unknown(String step, String why) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("state", "unknown");
+            o.put("step", step == null || step.isEmpty() ? "start" : step);
             o.put("why", why);
         } catch (Exception ignored) {
         }
@@ -91,6 +105,7 @@ final class MinusApply {
         final long t0 = System.currentTimeMillis();
         final boolean[] over = {false};
         final boolean[] injected = {false};
+        final String[] lastStep = {"start"};
         final Runnable[] tick = new Runnable[1];
         tick[0] = new Runnable() {
             @Override
@@ -98,7 +113,11 @@ final class MinusApply {
                 if (over[0]) return;
                 // a sending that started is waited for longer: it must not be cut off halfway
                 if (System.currentTimeMillis() - t0 > (injected[0] ? 120000 : 45000)) {
-                    finish(err(injected[0] ? "timeout-sending" : "login"));
+                    if (!injected[0]) {
+                        finish(err("login")); // the page never opened: nothing was sent
+                        return;
+                    }
+                    timeout();
                     return;
                 }
                 String u = w.getUrl();
@@ -124,13 +143,59 @@ final class MinusApply {
                                 if (!(b instanceof JSONObject)) return;
                                 JSONObject o = (JSONObject) b;
                                 String state = o.optString("state");
-                                if ("ok".equals(state) || "error".equals(state)) finish(o);
+                                String st = o.optString("step");
+                                if (!st.isEmpty() && !st.equals(lastStep[0])) {
+                                    lastStep[0] = st;
+                                    cb.step(st);
+                                }
+                                if ("ok".equals(state) || "error".equals(state) || "unknown".equals(state)) finish(o);
                             } catch (Exception ignored) {
                             }
                         }
                     });
                 }
                 ui.postDelayed(tick[0], 700);
+            }
+
+            /**
+             * The sending ran out of time after it had started: its outcome is not known (a request may have reached
+             * StoreFront). One last look at the page, then "unknown" with the step it had reached. Never "nothing sent".
+             */
+            private void timeout() {
+                final Runnable last = new Runnable() {
+                    @Override
+                    public void run() {
+                        finish(unknown(lastStep[0], "timeout"));
+                    }
+                };
+                ui.postDelayed(last, 5000);
+                try {
+                    w.evaluateJavascript("JSON.stringify(window.__mx||null)", new ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String v) {
+                            ui.removeCallbacks(last);
+                            try {
+                                Object a = new JSONTokener(v).nextValue();
+                                Object b = a instanceof String ? new JSONTokener((String) a).nextValue() : null;
+                                if (b instanceof JSONObject) {
+                                    JSONObject o = (JSONObject) b;
+                                    String state = o.optString("state");
+                                    if ("ok".equals(state) || "error".equals(state) || "unknown".equals(state)) {
+                                        finish(o);
+                                        return;
+                                    }
+                                    finish(unknown(o.optString("step", lastStep[0]), "timeout"));
+                                    return;
+                                }
+                            } catch (Exception ignored) {
+                            }
+                            finish(unknown(lastStep[0], "timeout"));
+                        }
+                    });
+                } catch (Exception e) {
+                    ui.removeCallbacks(last);
+                    finish(unknown(lastStep[0], "timeout"));
+                }
             }
 
             private void finish(JSONObject o) {
