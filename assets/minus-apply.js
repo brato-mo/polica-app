@@ -32,9 +32,23 @@
   //   5xx / no answer (network dropped, page cut off)  the request may have been carried out: UNKNOWN
   // Never sent again on its own.
   var UNKNOWN = {};
+  // Test build (IN.sim set by the phone only there): nothing is sent; StoreFront's answer is played as the tester
+  // chose, through the same handling as a real answer.
+  var SIM = IN.sim ? String(IN.sim) : '';
+  function fake(status, ms) {
+    return new Promise(function (ok) { setTimeout(function () { ok({ status: status, ok: status >= 200 && status < 300, text: function () { return Promise.resolve('{"sim":true}'); } }); }, ms); });
+  }
+  function simulate(step) {
+    var slow = SIM === 'slow' ? 15000 : 1200;
+    if (SIM === 'drop-' + step) return new Promise(function (ok, no) { setTimeout(function () { no(new TypeError('Failed to fetch')); }, slow); });
+    if (SIM === 'hang-' + step) return new Promise(function () {}); // no answer ever: the phone's time limit decides
+    if (SIM === '500-' + step) return fake(500, slow);
+    if (SIM === '422-' + step) return fake(422, slow);
+    return fake(200, slow);
+  }
   function write(step, body) {
     window.__mx.step = step;
-    return req('POST', '/api/v1/stock-adjustments', body).then(function (r) {
+    return (SIM ? simulate(step) : req('POST', '/api/v1/stock-adjustments', body)).then(function (r) {
       (window.__mx.http || (window.__mx.http = {}))[step] = r.status;
       if (r.ok) {
         if (typeof r.text !== 'function') return null;
@@ -89,18 +103,22 @@
     skipped = checked.filter(function (x) { return !x.ok; }).map(function (x) { return { num: x.it.num, why: x.why }; });
     if (!go.length) { done({ state: 'ok', step: 'check', sent: [], skipped: skipped }); return; }
     window.__mx.step = 'user';
-    // the same checks StoreFront's approve dialog makes, in the same order
-    return req('POST', '/api/v1/validate-sap-user/validate-non-store-user', { username: user }).then(function (r) {
-      if (r.status === 401) throw 'nonstore';
-      if (!r.ok) throw 'http ' + r.status;
-      return req('POST', '/api/v1/validate-sap-user/validate-user-in-correct-store', { username: user, currentStore: store });
-    }).then(function (r) {
-      if (r.status === 401) throw 'wrongstore';
-      if (!r.ok) throw 'http ' + r.status;
-      return req('POST', '/api/v1/validate-sap-user', { username: user, password: pass });
-    }).then(function (r) {
-      if (r.status === 401) throw 'auth';
-      if (!r.ok) throw 'http ' + r.status;
+    // the same checks StoreFront's approve dialog makes, in the same order (test build: not asked either, 'auth'
+    // plays a refused password)
+    var approved = SIM ? new Promise(function (ok) { setTimeout(ok, 600); }).then(function () { if (SIM === 'auth') throw 'auth'; }) :
+      req('POST', '/api/v1/validate-sap-user/validate-non-store-user', { username: user }).then(function (r) {
+        if (r.status === 401) throw 'nonstore';
+        if (!r.ok) throw 'http ' + r.status;
+        return req('POST', '/api/v1/validate-sap-user/validate-user-in-correct-store', { username: user, currentStore: store });
+      }).then(function (r) {
+        if (r.status === 401) throw 'wrongstore';
+        if (!r.ok) throw 'http ' + r.status;
+        return req('POST', '/api/v1/validate-sap-user', { username: user, password: pass });
+      }).then(function (r) {
+        if (r.status === 401) throw 'auth';
+        if (!r.ok) throw 'http ' + r.status;
+      });
+    return approved.then(function () {
       window.__mx.sent = go.map(function (it) { return it.num; });
       if (ADJUST_ONLY) return null;
       // 1. Minus lista: the number in minus counted 0, as the Minus lista page sends it (reason 103, quantity =

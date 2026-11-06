@@ -290,6 +290,8 @@
     });
     if (!items.length) throw 'bad input';
     var done = [], failed = [];
+    // test build: nothing is saved, the answer is played (the app shows it like a real one)
+    if (arg.dry) return new Promise(function (ok) { setTimeout(function () { ok({ done: items.map(function (x) { return String(x.num); }), failed: [], dry: true }); }, 800); });
     // four at a time: one by one, 50 articles took StoreFront minutes
     return inBatches(items, 4, function (x) {
       return req('POST', '/api/v1/article-smdm-data/update', { storeId: store, articleId: String(x.num), module: 'SM_DM', smQuantity: Math.round(+x.sm), dmQuantity: Math.round(+x.dm) })

@@ -821,6 +821,23 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** A test build (Sandbox): nothing that writes leaves the phone; sendings are played. */
+        @JavascriptInterface
+        public boolean sandbox() {
+            return Sandbox.on(MainActivity.this);
+        }
+
+        /** Test build only: how a played sending ends (see Sandbox.SIMS). */
+        @JavascriptInterface
+        public String sim() {
+            return Sandbox.on(MainActivity.this) ? Sandbox.sim(MainActivity.this) : "";
+        }
+
+        @JavascriptInterface
+        public void setSim(String s) {
+            if (Sandbox.on(MainActivity.this)) Sandbox.setSim(MainActivity.this, String.valueOf(s));
+        }
+
         /** The record of the last sending (see OpLog), or "" when there is none. */
         @JavascriptInterface
         public String minusOp() {

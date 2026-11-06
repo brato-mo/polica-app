@@ -18,6 +18,18 @@ public class App extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        // test builds: also what StoreFront's own service worker would send is held back (see Sandbox)
+        if (Sandbox.on(this)) {
+            try {
+                android.webkit.ServiceWorkerController.getInstance().setServiceWorkerClient(new android.webkit.ServiceWorkerClient() {
+                    @Override
+                    public android.webkit.WebResourceResponse shouldInterceptRequest(android.webkit.WebResourceRequest r) {
+                        return Sandbox.guard(App.this, r);
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+        }
         final File f = crashFile(this);
         final Thread.UncaughtExceptionHandler old = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {

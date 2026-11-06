@@ -189,6 +189,10 @@ public class OrdersActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView sbView, android.webkit.WebResourceRequest sbReq) {
+                return Sandbox.guard(sbView.getContext(), sbReq); // test builds: nothing that writes leaves the phone
+            }
+            @Override
             public void onPageFinished(WebView v, String url) {
                 AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login
             }

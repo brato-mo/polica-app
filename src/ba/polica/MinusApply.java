@@ -79,6 +79,7 @@ final class MinusApply {
         input.put("pass", pass);
         input.put("items", items);
         input.put("mode", adjustOnly ? "adjust" : "both");
+        if (Sandbox.on(ctx)) input.put("sim", Sandbox.sim(ctx)); // test build: the outcome is played, nothing is sent
         final String[] script = {"window.__mx=null;window.__mxIn=" + input + ";" + bo.toString("UTF-8")};
         final WebView w = new WebView(ctx.getApplicationContext());
         WebSettings st = w.getSettings();
@@ -90,6 +91,10 @@ final class MinusApply {
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
         w.setAlpha(0f);
         w.setWebViewClient(new WebViewClient() {
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView sbView, android.webkit.WebResourceRequest sbReq) {
+                return Sandbox.guard(sbView.getContext(), sbReq); // test builds: nothing that writes leaves the phone
+            }
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return !"https".equals(r.getUrl().getScheme());

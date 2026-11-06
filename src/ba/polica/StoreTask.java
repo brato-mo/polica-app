@@ -64,6 +64,12 @@ final class StoreTask {
     }
 
     private static void run0(Context ctx, final ViewGroup parent, JSONObject arg, final Callback cb) {
+        if (Sandbox.on(ctx)) {
+            try {
+                arg.put("dry", true); // test build: the script plays a sending instead of making it
+            } catch (Exception ignored) {
+            }
+        }
         final Handler ui = new Handler(Looper.getMainLooper());
         final String host = new StringBuilder(ctx.getString(R.string.storefront_host)).reverse().toString().trim();
         final boolean sends = "smset".equals(arg.optString("mode"));
@@ -79,6 +85,10 @@ final class StoreTask {
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
         w.setAlpha(0f);
         w.setWebViewClient(new WebViewClient() {
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView sbView, android.webkit.WebResourceRequest sbReq) {
+                return Sandbox.guard(sbView.getContext(), sbReq); // test builds: nothing that writes leaves the phone
+            }
             @Override
             public void onPageFinished(WebView v, String url) {
                 AutoLogin.onPage(v.getContext(), v, url); // the session ran out: sign in again with the kept login

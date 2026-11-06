@@ -11,6 +11,11 @@ VERSION_NAME="${VERSION_NAME:-1.0}"
 # TEST=1: a test build that installs NEXT TO the real app (package ba.polica.test, name "... TEST", its own data,
 # signed with keystore/test.jks, made here if missing), so trying it never touches the real app or its data
 TEST="${TEST:-0}"
+# RC=1: a release candidate with the real package and signing key (installs over the real app, keeps its data) that,
+# like a test build, never writes to StoreFront or MYJYSK (Sandbox). TEST=1 is always like that too.
+RC="${RC:-0}"
+SANDBOX=""
+if [ "$TEST" = 1 ] || [ "$RC" = 1 ]; then SANDBOX=1; fi
 if [ "$TEST" = 1 ]; then
   if [ ! -f keystore/test.jks ]; then
     mkdir -p keystore && keytool -genkeypair -keystore keystore/test.jks -alias polica -storepass testtest -keypass testtest \
@@ -52,6 +57,7 @@ cat > build/res-gen/values/config.xml <<XML
     <string name="update_repo" translatable="false">$UPDATE_REPO</string>
     <string name="myjysk_host" translatable="false">$MJHOST</string>
     <string name="plans_host" translatable="false">$PLHOST</string>
+    <string name="sandbox" translatable="false">$SANDBOX</string>
     <string name="app_name">$APPNAME</string>
     <string name="import_label">Dodaj u $APPNAME</string>
 </resources>

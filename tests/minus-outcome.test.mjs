@@ -128,3 +128,38 @@ test('a second start while one runs does nothing', async () => {
   vm.runInNewContext(SRC, { window: win, fetch: async () => { n++; return {}; }, Promise, JSON });
   assert.equal(n, 0);
 });
+
+// Test builds (IN.sim, set only by a sandbox build): nothing that writes or checks the password reaches StoreFront,
+// and every played ending goes through the same handling as a real one.
+async function sim(simMode, mode = 'both') {
+  const calls = [];
+  const fetch = async (url, o = {}) => {
+    calls.push({ url, method: o.method || 'GET' });
+    const ok = (b) => ({ status: 200, ok: true, json: async () => b, text: async () => JSON.stringify(b) });
+    if (url.startsWith('/api/v1/websapapi/user-details')) return ok({ userDetails: { username: '100001', storeInfo: { storeId: 'T001', catalogId: 'CAT-1' } } });
+    if (url.startsWith('/api/v1/minus-list/')) return ok(ITEMS.map((x) => ({ articleId: x.num, totalStock: x.qty })));
+    if (url.startsWith('/api/v1/article/masterdata')) { const n = /article=(\d+)/.exec(url)[1]; const it = ITEMS.find((x) => x.num === n); return ok([{ substitutionChain: [{ articleNumber: it.target, smDmData: { stock: 10 } }] }]); }
+    throw new Error('a test build must not call ' + (o.method || 'GET') + ' ' + url);
+  };
+  const win = { __mxIn: { user: '', pass: 'x', items: ITEMS, mode, sim: simMode } };
+  win.window = win;
+  vm.runInNewContext(SRC, { window: win, fetch, Promise, JSON, Error, TypeError, String, Math, Object, Array, encodeURIComponent, setTimeout });
+  for (let i = 0; i < 400 && (!win.__mx || win.__mx.state === 'busy'); i++) await new Promise((r) => setTimeout(r, 10));
+  return { r: win.__mx, calls };
+}
+
+test('test build: every played ending, and only reads reach StoreFront', async () => {
+  const want = {
+    ok: ['ok', 'adjust'], 'drop-minus': ['unknown', 'minus'], 'drop-adjust': ['unknown', 'adjust'], '500-minus': ['unknown', 'minus'],
+    '422-adjust': ['error', 'adjust'], auth: ['error', 'user'],
+  };
+  for (const [m, [state, step]] of Object.entries(want)) {
+    const { r, calls } = await sim(m);
+    assert.equal(r.state, state, m);
+    assert.equal(r.step, step, m);
+    assert.ok(calls.every((c) => c.method === 'GET'), m + ': only GET requests');
+  }
+  const hang = await sim('hang-minus');
+  assert.equal(hang.r.state, 'busy', 'no answer: the phone time limit decides');
+  assert.equal(hang.r.step, 'minus');
+});

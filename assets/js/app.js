@@ -877,6 +877,10 @@ function renderSettings() {
     ${act('signout', 'Odjavi se iz StoreFronta', 'Sljedeći put se ponovo prijaviš na njihovoj stranici', true)}
   </div></section>
 
+  ${sandboxOn() ? `<section class="set-block"><h3>TEST: simulacija slanja</h3><div class="set-card">
+    <div class="set-row set-col"><div class="set-txt"><b>Ova verzija ništa ne šalje</b><small>Minus lista, Regulacija, SM/DM i AR se ne šalju u StoreFront ni MYJYSK. Čitanje radi normalno. Ovdje biraš kako se odigrano slanje završi.</small></div></div>
+    ${SIMS.map(([k, label, sub]) => `<button class="set-row set-act" type="button" data-sim="${k}"><div class="set-txt"><b>${k === simNow() ? '● ' : ''}${esc(label)}</b><small>${esc(sub)}</small></div></button>`).join('')}
+  </div></section>` : ''}
   <section class="set-block"><h3>O aplikaciji</h3><div class="set-card">
     <div class="set-row"><div class="set-txt"><b>@APP@</b><small>Verzija ${esc(A.version())} · ${esc(A.device())}</small></div></div>
     ${S.crash ? `<div class="set-row set-col"><div class="set-txt"><b>Zadnja greška</b><small class="crash">${esc(S.crash.slice(0, 700))}</small></div></div>${act('crash-clear', 'Obriši zapis o grešci', '')}` : ''}
@@ -888,7 +892,23 @@ function renderSettings() {
   </div></section>`;
 }
 
+// test builds only (Sandbox): how a played Minus/Regulacija sending ends
+const sandboxOn = () => { try { return !!(A.sandbox && A.sandbox()); } catch (e) { return false; } };
+const simNow = () => { try { return (A.sim && A.sim()) || 'ok'; } catch (e) { return 'ok'; } };
+const SIMS = [
+  ['ok', 'Uspjeh', 'Oba koraka prihvaćena → Potvrđeno'],
+  ['drop-minus', 'Pad mreže na Minus listi', 'Odgovor ne stigne → Ishod nepoznat'],
+  ['drop-adjust', 'Pad mreže na Regulaciji', 'Minus prihvaćen, Regulacija bez odgovora → Ishod nepoznat'],
+  ['500-minus', 'Greška servera na Minus listi', '→ Ishod nepoznat'],
+  ['422-adjust', 'Regulacija odbijena', '→ Djelimično završeno, Regulacija čeka'],
+  ['auth', 'Pogrešna lozinka', '→ Neuspjelo, ništa nije promijenjeno'],
+  ['hang-minus', 'Bez odgovora na Minus listi', 'Za test zatvaranja aplikacije; nakon 2 min → Ishod nepoznat'],
+  ['hang-adjust', 'Bez odgovora na Regulaciji', 'Za test zatvaranja aplikacije; nakon 2 min → Ishod nepoznat'],
+  ['slow', 'Sporo (15 s po koraku)', 'Za test zatvaranja ili isključenja interneta usred slanja'],
+];
+
 function onSettingsClick(t) {
+  if (t.dataset.sim) { try { A.setSim(t.dataset.sim); } catch (e) { /* not a test build */ } renderSettings(); toast('Simulacija: ' + (SIMS.find((x) => x[0] === t.dataset.sim) || [])[1]); return; }
   if (t.dataset.set) {
     const k = t.dataset.set;
     setCfg({ [k]: !cfg()[k] });
@@ -1593,6 +1613,7 @@ function renderMinus() {
   const decide = items.filter((x) => chainOf(x).length && !minusTarget(x));
   const noSub = items.filter((x) => !chainOf(x).length);
   box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
+    ${sandboxOn() ? `<p class="sandbox-note">TEST verzija: slanje se samo odigra (${esc((SIMS.find((x) => x[0] === simNow()) || SIMS[0])[1])}). Ništa ne ide u StoreFront. Promjena: Postavke → TEST.</p>` : ''}
     ${minusOpCard()}
     ${minusPlan(items)}
     ${decide.length ? `<section class="mj-sec"><div class="sec-head"><h2>Treba tvoja odluka</h2><small>${decide.length}</small></div>
@@ -1887,6 +1908,7 @@ window.onStoreTask = (r) => {
   stJobs.delete(r.job);
   if (r.how === 'ok') { S.user.store = { ok: true }; }
   cb(r);
+  if (r.res && r.res.dry) setTimeout(() => toast('TEST verzija: ništa nije spremljeno u StoreFront (samo odigrano).'), 1800);
 };
 
 /** What a status code means (StoreFront's own list). */
@@ -2523,6 +2545,7 @@ function arSend() {
 }
 
 window.onMjAr = (r) => {
+  if (r && r.res && r.res.dry) setTimeout(() => toast('TEST verzija: ništa nije poslano u MYJYSK (samo odigrano).'), 1800);
   const was = S.ar.busy;
   S.ar.busy = '';
   const k = arKept();
@@ -4228,7 +4251,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-sim],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -4334,6 +4357,7 @@ function boot() {
   syncWatch();
   syncMyjysk(false);
   minusOpNow();
+  if (sandboxOn()) document.body.classList.add('is-sandbox');
   renderHome();
   if (gateNeeded()) showGate();
   else { try { if (A.loginState && A.loginState() === 'refused') setTimeout(() => toast('StoreFront nije prihvatio sačuvanu lozinku. Upiši je ponovo u Postavke → Prijava.'), 1500); } catch (e) { /* older shell */ } }

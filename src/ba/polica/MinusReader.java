@@ -60,6 +60,10 @@ final class MinusReader {
         w.setAlpha(0f);
         w.setWebViewClient(new WebViewClient() {
             @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView sbView, android.webkit.WebResourceRequest sbReq) {
+                return Sandbox.guard(sbView.getContext(), sbReq); // test builds: nothing that writes leaves the phone
+            }
+            @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return !"https".equals(r.getUrl().getScheme());
             }

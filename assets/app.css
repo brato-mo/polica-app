@@ -1316,3 +1316,18 @@ button.code-chip:active { transform: scale(.96); }
 .tip-items small { color: var(--ink-3); }
 .tip-items .code { font-size: 12.5px; }
 .tips-bar b { color: var(--primary); }
+
+/* test builds (Sandbox): always visible that nothing is sent */
+body.is-sandbox::after { content: 'TEST · ništa se ne šalje'; position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 4px); transform: translateX(-50%); z-index: 9999; padding: 3px 10px; border-radius: 999px; background: var(--spot); color: #131620; font-size: 11px; font-weight: 700; pointer-events: none; }
+.sandbox-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--spot); color: #131620; font-size: 13px; font-weight: 600; }
+
+/* the evidence of a sending with unknown outcome: shown as it is, nothing concluded */
+.op-facts { display: grid; gap: 4px; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); font-size: 13px; }
+.op-facts div { display: flex; justify-content: space-between; gap: 10px; }
+.op-facts span { color: var(--ink-2); }
+.op-ev { margin-top: 6px; font-size: 13px; }
+.op-ev small { display: block; color: var(--ink-2); }
+.op-moves { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-2); }
+.op-moves li.is-exact { color: var(--ink); }
+.op-none { margin: 4px 0 0; font-size: 12px; color: var(--ink-2); }
+.op-warnline { font-weight: 600; }

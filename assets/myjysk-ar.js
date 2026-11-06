@@ -66,6 +66,8 @@
     var guid = String(arg.guid || '');
     var answers = Array.isArray(arg.answers) ? arg.answers : [];
     if (!/^[0-9a-f-]{36}$/i.test(guid) || !answers.length) throw 'bad input';
+    // test build: no visit is made in MYJYSK, the answer is played
+    if (arg.dry) return new Promise(function (ok) { setTimeout(function () { ok({ id: 0, status: 'TEST: nije poslano', score: null, dry: true }); }, 800); });
     var id = 0;
     step('create');
     return post('/api/storevisits?stickToActiveVersion=true', {
