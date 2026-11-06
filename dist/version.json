@@ -1,7 +1,7 @@
 {
- "code": 60,
- "name": "1.58",
- "notes": "Sigurnije slanje Minus liste i Regulacije: zapis prije slanja, stanja (Potvrđeno, Djelimično, Neuspjelo, Ishod nepoznat – potrebna provjera), bez duplog slanja; redovi iz 1.57 na provjeri; ime i broj više nisu ugrađeni; bez backupa i sa sigurnim logovima; kopija podataka prije nadogradnje",
- "size": 2016292,
- "sha256": "79b9aad78dbfacc639163f3012a40c4de72437eb57684a9b2461201ecac88da3"
+ "code": 61,
+ "name": "1.59",
+ "notes": "Brže: uvoz planograma, StoreFront poslovi (topla stranica, najviše 2 odjednom), rasprodaja namještaja u dvije pretrage; trajanje poslova u dijagnostici",
+ "size": 2020388,
+ "sha256": "0da80b1fc365589c4fe4df49de2b8994fc02746267d12f81123234c878135fa5"
 }
