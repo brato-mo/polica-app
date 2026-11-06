@@ -5,6 +5,7 @@ import * as docs from './docs.js';
 import * as news from './news.js';
 import * as ar from './ar.js';
 import * as smcheck from './smcheck.js';
+import * as tips from './tips.js';
 
 const A = window.Android;
 const $ = (s, el = document) => el.querySelector(s);
@@ -236,6 +237,7 @@ function back() {
   if (t.id === 'top') renderTop();
   if (t.id === 'smdm') renderSm();
   if (t.id === 'audit') renderAudit();
+  if (t.id === 'tips') renderTips();
   if (t.id === 'home') renderHome();
   const sc = $(`#${t.id} .scroll`);
   if (sc && t.scroll) { const y = t.scroll; sc.scrollTop = y; requestAnimationFrame(() => { sc.scrollTop = y; }); }
@@ -1206,7 +1208,7 @@ function newsRow(st, a) {
 
 // ------------------------------------------------------------------ Minus lista (StoreFront, only read)
 
-function renderStoreBars() { renderTopBar(); renderSmBar(); }
+function renderStoreBars() { renderTipsBar(); renderTopBar(); renderSmBar(); }
 
 function renderMinusBar() {
   const b = $('#minusBar');
@@ -1733,18 +1735,21 @@ const deptName = () => { const p = deptPlans()[0]; return p ? String(p.title || 
 const deptSig = () => deptUsed().map((x) => x.id).join(',');
 
 /** Learns the department's groups (once per set of planograms), then runs next(). */
+S.deptWait = [];
 function withDept(next) {
   if (deptGroups() || !deptPlans().length) { next(); return; }
+  S.deptWait.push(next);
+  if (S.deptBusy) return; // already being learned: run with the others when it is there
   S.deptBusy = true;
+  const done = () => { S.deptBusy = false; const w = S.deptWait.splice(0); for (const f of w) f(); };
   const ok = stCall({ mode: 'groups', nums: deptNums() }, (r) => {
-    S.deptBusy = false;
     if (r.how === 'ok' && r.res && Array.isArray(r.res.groups)) {
       S.user.deptGroups = { key: deptKey(), at: Date.now(), groups: r.res.groups.slice(0, 80).map((x) => ({ id: String(x.id), title: String(x.title || ''), n: +x.n || 0 })) };
       saveUser();
     }
-    next();
+    done();
   });
-  if (!ok) { S.deptBusy = false; next(); }
+  if (!ok) done();
 }
 
 /** The department's groups as chips: tap leaves one out (or takes it back). */
@@ -2254,6 +2259,101 @@ async function onAuClick(t) {
   }
 }
 
+// ------------------------------------------------ Prijedlozi danas: what is worth doing today
+
+S.tips = { busy: false, timer: 0 };
+
+/** Everything the tips are made from, as the app has it now. */
+function tipsSrc() {
+  const a = S.user.audit;
+  const c = S.user.clr2 || {};
+  const st = S.user.mj;
+  let tasks = [];
+  if (st && st.at) {
+    const now = Date.now();
+    tasks = news.myTasks(st, mjMe()).map((t) => {
+      const d = news.due(t.end, now);
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t.end || '');
+      const days = m ? Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - new Date(new Date(now).setHours(0, 0, 0, 0))) / 86400000) : null;
+      return { title: t.title, days, left: d.left };
+    });
+  }
+  return {
+    audit: a && a.list ? { at: a.at, groups: smcheck.check(a.list, a.top, (n) => S.index.byNum.has(n)) } : null,
+    top: S.user.top && S.user.top.list ? S.user.top : null,
+    home: c.home || null,
+    furn: c.furn || null,
+    ar: { enabled: mjOn(), done: ar.doneThisWeek(arKept().last, Date.now()) },
+    tasks,
+  };
+}
+
+function renderTipsBar() {
+  const b = $('#tipsBar');
+  if (!b) return;
+  b.hidden = !S.plans.length || !A.storeTask;
+  if (b.hidden) return;
+  const t = tips.build(tipsSrc());
+  const now1 = t.filter((x) => x.level === 1).length;
+  b.innerHTML = `${icon('star')}<span><b>Prijedlozi danas${t.length ? `: ${t.length}` : ''}</b><small>${t.length ? `${now1 ? `${now1} hitno · ` : ''}${esc(t[0].title)}` : 'Šta se isplati uraditi danas u odjelu'}</small></span><span class="go">Otvori</span>`;
+}
+
+function openTips() {
+  go('tips');
+  renderTips();
+  if (tips.stale(tipsSrc()).length) tipsRefresh();
+}
+
+/** Reads again what is old or missing (best sellers, SM/DM check, lists to sell out), the screen follows. */
+function tipsRefresh(all = false) {
+  const src = tipsSrc();
+  const want = all ? ['audit', 'top', 'home', 'furn'] : tips.stale(src);
+  if (want.includes('audit') && !S.au.busy) loadAudit();
+  if (want.includes('top') && !S.topBusy) loadTop();
+  const home = want.includes('home'), furn = want.includes('furn');
+  if (home) loadClr2('home');
+  S.tips.busy = true;
+  clearInterval(S.tips.timer);
+  let furnDone = !furn;
+  S.tips.timer = setInterval(() => {
+    // the two lists to sell out are read one after the other (one list at a time)
+    if (!furnDone && !S.clr.busy) { furnDone = true; loadClr2('furn'); }
+    const busy = S.au.busy || S.topBusy || S.clr.busy || S.deptBusy || !furnDone;
+    if (top().id === 'tips') renderTips();
+    renderTipsBar();
+    if (!busy) { clearInterval(S.tips.timer); S.tips.busy = false; if (top().id === 'tips') renderTips(); }
+  }, 1200);
+  renderTips();
+}
+
+function renderTips() {
+  const box = $('#tipsBody');
+  if (!box) return;
+  const t = tips.build(tipsSrc());
+  const lv = { 1: 'Hitno', 2: 'Danas', 3: 'Kad stigneš' };
+  const busy = S.tips.busy ? `<p class="count-line"><i class="mj-busy"></i> Čitam iz StoreFronta: ${[S.au.busy && 'SM/DM provjera', S.topBusy && 'najprodavanije', S.clr.busy && 'lista za rasprodaju', S.deptBusy && 'grupe odjela'].filter(Boolean).join(', ') || 'još malo'}…</p>` : '';
+  const cards = t.map((x) => `<section class="tipc tip-l${x.level}">
+    <div class="tip-head"><span class="tip-lv">${lv[x.level]}</span><b>${esc(x.title)}</b></div>
+    <p>${esc(x.text)}</p>
+    ${x.items.length ? `<ul class="tip-items">${x.items.map((i) => `<li>${i.num ? `<span class="code">${esc(i.num)}</span> ` : ''}${esc(i.name)}${i.sub ? ` <small>· ${esc(i.sub)}</small>` : ''}</li>`).join('')}</ul>` : ''}
+    <button class="btn btn-soft btn-small" type="button" data-tip-go="${esc(x.go)}">Otvori i riješi</button>
+  </section>`).join('');
+  box.innerHTML = `<div class="top-head"><p class="count-line">${esc(deptName())} · iz StoreFronta i MYJYSK</p>
+      <button class="text-btn" type="button" data-tip="refresh" ${S.tips.busy ? 'disabled' : ''}>${icon('refresh')}Osvježi sve</button></div>
+    ${busy}
+    ${cards || (S.tips.busy ? '' : '<div class="mj-intro"><h3>Nema ništa hitno ✓</h3><p>Ukinuti artikli nemaju SM/DM, namještaj na izlogu je u redu, najprodavaniji imaju zalihe. Osvježi sutra.</p></div>')}`;
+}
+
+function onTipClick(t) {
+  if (t.dataset.tip === 'refresh') { tipsRefresh(true); return; }
+  const g = t.dataset.tipGo;
+  if (g === 'audit') openAudit();
+  else if (g === 'top') openTop();
+  else if (g === 'ar') openAr();
+  else if (g === 'news') { go('home'); setMode('news'); }
+  else if (g === 'clear-home' || g === 'clear-furn') { S.clr.dept = g === 'clear-furn' ? 'furn' : 'home'; S.clr.st = 'all'; openClearance(); }
+}
+
 // ------------------------------------------------ AR artikli: the weekly rating of the department in MYJYSK
 //
 // The employee rates his department 1-5 per question; everything starts at 5. Under 5 MYJYSK wants a comment: he
@@ -2561,7 +2661,7 @@ function renderHome() {
   $('#newsWrap').hidden = !nw;
   if (nw) {
     $('#homeStats').textContent = 'Zadaci i vijesti iz MYJYSK';
-    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar', '#topBar', '#smBar']) $(id).hidden = true;
+    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar', '#tipsBar', '#topBar', '#smBar']) $(id).hidden = true;
     for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
     renderNews();
     return;
@@ -4018,7 +4118,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#topBar,#smBar,#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
     if (t.dataset.fav) {
@@ -4043,6 +4143,8 @@ function bind() {
     if (t.dataset.set || t.dataset.choice || t.dataset.act || t.dataset.tab || t.dataset.cst) { onSettingsClick(t); return; }
     if (t.id === 'clearBar') { openClearance(); return; }
     if (t.id === 'minusBar') { openMinus(); return; }
+    if (t.id === 'tipsBar') { openTips(); return; }
+    if (t.dataset.tip || t.dataset.tipGo) { onTipClick(t); return; }
     if (t.id === 'topBar') { openTop(); return; }
     if (t.id === 'smBar') { openSm(); return; }
     if (t.dataset.topDays) { S.topDays = +t.dataset.topDays; renderTop(); return; }

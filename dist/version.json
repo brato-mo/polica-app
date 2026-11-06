@@ -1,7 +1,7 @@
 {
- "code": 57,
- "name": "1.56",
- "notes": "Za rasprodaju, namještaj: tačno stanje uz DM (npr. -1 uz DM 1 = izloženi komad prodan, poslije skidanja s DM stanje 0)",
- "size": 1991438,
- "sha256": "66cadecd25004b5dd9cba6bee3bb405b35f3a8fcd58fcd07b5cde0f703167235"
+ "code": 58,
+ "name": "1.57",
+ "notes": "Prijedlozi danas: šta se isplati uraditi u odjelu (namještaj na DM bez zalihe, ukinuti sa SM/DM, AR, MYJYSK rokovi, najprodavaniji pri kraju zalihe, rasprodaja po vrijednosti, SM bez prodaje), sa dugmetom do ekrana gdje se rješava",
+ "size": 1995597,
+ "sha256": "913bb5c1f48bc371319f8b4c29077ad3e63e9448377d203dd4e5031a19432d2f"
 }
