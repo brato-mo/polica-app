@@ -15,7 +15,8 @@ open('build/jvm/MainActivity.java', 'w').write('package ba.polica;\nimport java.
 PY
 rm -rf $B/out && mkdir -p $B/out
 javac -nowarn -d $B/out $(find $B/JSON-java/src/main/java -name '*.java') $(find tests/jvm/stubs -name '*.java') $B/MainActivity.java \
-  src/ba/polica/OpLog.java src/ba/polica/MinusApply.java src/ba/polica/Sandbox.java 2>&1 | grep -v "JAVA_TOOL\|^Note" || true
+  src/ba/polica/OpLog.java src/ba/polica/MinusApply.java src/ba/polica/Sandbox.java src/ba/polica/Upgrade.java 2>&1 | grep -v "JAVA_TOOL\|^Note" || true
+test -f $B/out/ba/polica/Harness.class || { echo "javac failed"; exit 1; }
 node tests/jvm/gen.mjs $B/scenarios.json
 R="java -cp $B/out -Dscenarios=$B/scenarios.json -Dassets=assets ba.polica.Harness"
 $R quick 2>&1 | grep -v JAVA_TOOL

@@ -204,6 +204,7 @@ public class OrdersActivity extends Activity {
 
             @Override
             public void onPageStarted(WebView v, String url, Bitmap icon) {
+                Sandbox.page(v.getContext(), v); // test builds only
                 injected = false; // a new page has none of our script
                 showStatus(url);
             }

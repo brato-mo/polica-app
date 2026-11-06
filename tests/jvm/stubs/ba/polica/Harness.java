@@ -72,6 +72,39 @@ public class Harness {
 
     static String fileText(Context c) throws Exception { return new String(Files.readAllBytes(new File(new File(c.getFilesDir(), "data"), OpLog.FILE).toPath()), "UTF-8"); }
 
+    static void put(File d, String n, String t) throws Exception { d.mkdirs(); Files.write(new File(d, n).toPath(), t.getBytes("UTF-8")); }
+    static String get(File d, String n) throws Exception { File f = new File(d, n); return f.isFile() ? new String(Files.readAllBytes(f.toPath()), "UTF-8") : null; }
+
+    /** Upgrade.java: the copy before the first run of a newer version, and putting it back. */
+    static void upgrade() throws Exception {
+        System.out.println("scenario update 1.57 -> 1.58 -> back");
+        Context c = ctx("op-upgrade", "");
+        File data = new File(c.getFilesDir(), "data"), backup = new File(c.getFilesDir(), "backup");
+        put(data, "user.json", "{\"favs\":[\"1765142\"],\"v\":157}");
+        put(data, "plans.json", "[{\"id\":\"p1\"}]");
+        put(data, "plan-p1.json", "{\"items\":[]}");
+        android.content.pm.PackageManager.CODE = 60; // 1.57 never ran this: the first 1.58 start is the first call
+        Upgrade.snapshot(c);
+        File snap = new File(backup, "prije-60");
+        check(snap.isDirectory() && get(snap, "user.json").contains("\"v\":157") && get(snap, "plans.json") != null, "first run of 1.58: copy of the 1.57 records");
+        check(get(snap, "plan-p1.json") == null, "planogram reads not copied (stay in place, made again from the PDFs)");
+        Upgrade.snapshot(c);
+        check(backup.list().length == 1, "second start of the same version: no new copy");
+        put(data, "user.json", "{\"favs\":[],\"v\":158}");
+        put(data, OpLog.FILE, "{\"state\":\"unknown\",\"id\":\"x\"}");
+        check(Upgrade.restore(c, "prije-60"), "copy put back");
+        check(get(data, "user.json").contains("\"v\":157") && get(data, "plan-p1.json") != null, "records as before the update, planograms untouched");
+        check(get(data, OpLog.FILE).contains("unknown"), "an open sending stays open after putting a copy back");
+        boolean saved = false;
+        for (String n : backup.list()) if (n.startsWith("vraceno-") && get(new File(backup, n), "user.json").contains("\"v\":158")) saved = true;
+        check(saved, "what was there before putting back is kept as its own copy");
+        check(!Upgrade.restore(c, "../data") && !Upgrade.restore(c, "nema"), "bad or missing copy name: nothing done");
+        android.content.pm.PackageManager.CODE = 61; Upgrade.snapshot(c);
+        android.content.pm.PackageManager.CODE = 62; Upgrade.snapshot(c);
+        check(backup.list().length <= 2, "only the 2 newest copies kept (" + backup.list().length + ")");
+        check(new org.json.JSONArray(Upgrade.list(c)).length() == backup.list().length, "list shows them");
+    }
+
     public static void main(String[] a) throws Exception {
         String mode = a.length > 0 ? a[0] : "quick";
         JSONObject sc = new JSONObject(new String(Files.readAllBytes(Paths.get(System.getProperty("scenarios"))), "UTF-8"));
@@ -131,6 +164,35 @@ public class Harness {
             check(!Sandbox.blocks("GET", sf, "/api/v1/minus-list/X", sf, mj), "lets GET through");
             check(!Sandbox.blocks("POST", "login.microsoftonline.com", "/common/oauth2/token", sf, mj), "sign-in elsewhere untouched");
             check(!Sandbox.blocks("POST", mj, "/searchapi/kb/recent", sf, mj), "MYJYSK news read untouched");
+            // every address the app's own scripts use for reading must still work in a test build ...
+            String[][] reads = {
+                {"GET", sf, "/api/v1/websapapi/user-details"}, {"GET", sf, "/api/v1/minus-list/X704?include=Article"},
+                {"GET", sf, "/api/v1/article/masterdata?article=4912611&catalog=1014-1-BA&store=X704&include=SubstitutionChainSmDm"},
+                {"GET", sf, "/api/v1/stockhistory/X704/4912611"}, {"GET", sf, "/api/v1/customer-order/order-totals/X704"},
+                {"GET", sf, "/api/v1/customer-order/123"}, {"GET", sf, "/api/v1/catalog/product-hierarchy-groups"},
+                {"GET", sf, "/api/v1/stock-movements/by-period/1014/X704/1014-1-BA/2026-10-01/2026-11-06"},
+                {"GET", sf, "/api/v1/application-info/version"}, {"GET", sf, "/ui/"}, {"POST", sf, "/api/v1/article/search?include=SmDm"},
+                {"GET", mj, "/api/BackendContext/information"}, {"GET", mj, "/api/storevisits/visittypes"}, {"GET", mj, "/api/customforms/12"},
+                {"GET", mj, "/api/storevisits/55"}, {"GET", mj, "/api/v2/storevisits/55/conduct"}, {"GET", mj, "/learnapi/v1/articles/5127"},
+                {"GET", mj, "/searchapi/widgets/tasklist/8/0/100/0?sortasc=endDate"}, {"GET", mj, "/searchapi/search?type=kbarticle&topicfacets=auto&kbaseid=181"},
+                {"POST", mj, "/searchapi/kb/recent"}, {"GET", sf, "/api/v1/orders?start=0&max=40"},
+                // sign-in: StoreFront's F5 gateway form and the company sign-in page
+                {"POST", sf, "/my.policy"}, {"POST", "idp.jysk.com", "/idp/SSO.saml2"}, {"POST", "login.microsoftonline.com", "/common/login"},
+                {"POST", mj, "/signin-oidc"}, {"POST", sf, "/login/oauth2/code/jysk"},
+            };
+            for (String[] x : reads) check(!Sandbox.blocks(x[0], x[1], x[2], sf, mj), "test build lets through " + x[0] + " " + x[2]);
+            // ... and everything that writes is held back, wherever and however it is sent
+            String[][] writes = {
+                {"POST", sf, "/api/v1/stock-adjustments"}, {"POST", sf, "/api/v1/validate-sap-user"}, {"POST", sf, "/api/v1/article-smdm-data/update"},
+                {"PUT", sf, "/api/v1/customer-order/123/status"}, {"PATCH", sf, "/api/v1/anything"}, {"DELETE", sf, "/api/v1/minus-list/1"},
+                {"POST", sf, "/api/v2/stock/adjust"}, {"POST", sf, "/ui/some-form"}, {"POST", sf, "/legacy/save.do"}, {"POST", sf, "/api/v1/article/search/../../stock-adjustments"},
+                {"POST", mj, "/api/storevisits?stickToActiveVersion=true"}, {"POST", mj, "/api/v2/storevisits/55/startconduct"},
+                {"POST", mj, "/api/v2/storevisits/55/conduct/fieldvalue"}, {"POST", mj, "/api/tasks/9/complete"}, {"POST", mj, "/odata/Tasks(9)"},
+                {"GET", mj, "/api/storevisits/55/complete?conductedOn=11/6/2026"}, {"GET", mj, "/api/tasks/9/markAsRead"},
+                {"GET", sf, "/api/v1/orders/9/approve"}, {"GET", sf, "/api/v1/tasks/9?action=delete"}, {"GET", mj, "/api/news/1/delete"},
+                {"POST", "api.example-third-party.test", "/collect"}, {"POST", "storefront-api.example.test", "/v1/write"},
+            };
+            for (String[] x : writes) check(Sandbox.blocks(x[0], x[1], x[2], sf, mj), "test build holds back " + x[0] + " " + x[1].replace(".example.test", "") + x[2]);
             Context rel = ctx("op-release", "");
             check(Sandbox.guard(rel, new android.webkit.WebResourceRequest() {
                 public android.net.Uri getUrl() { return android.net.Uri.parse("https://" + sf + "/api/v1/stock-adjustments"); }
@@ -138,6 +200,7 @@ public class Harness {
             check(Sandbox.guard(t, new android.webkit.WebResourceRequest() {
                 public android.net.Uri getUrl() { return android.net.Uri.parse("https://" + sf + "/api/v1/stock-adjustments"); }
                 public String getMethod() { return "POST"; } }).status == 403, "test build: guard answers 403 on the phone");
+            upgrade();
         } else if (mode.equals("hang") || mode.equals("dead")) {
             boolean dead = mode.equals("dead");
             System.out.println("scenario " + mode + " (real 120 s time limit)");

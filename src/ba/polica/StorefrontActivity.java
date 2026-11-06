@@ -195,6 +195,7 @@ public class StorefrontActivity extends Activity {
 
             @Override
             public void onPageStarted(WebView v, String url, Bitmap icon) {
+                Sandbox.page(v.getContext(), v); // test builds only
                 updateStatus(url);
             }
         });
