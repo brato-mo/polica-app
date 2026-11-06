@@ -28,15 +28,17 @@ echo "1/5 resources"
 # keystore/, never published) and the place the app looks for updates (update-repo.txt)
 HOSTNAME="$(tr -d ' \r\n' < keystore/host.txt | rev)"
 UPDATE_REPO="$(tr -d ' \r\n' < update-repo.txt)"
-# MYJYSK (tasks and news): its address and who the employee is there (name, number), private files in keystore/;
-# without them the app simply has no MYJYSK
-MJHOST=""; MJME=""
+# a test build never updates itself from the real app's releases
+if [ "$TEST" = 1 ]; then UPDATE_REPO=""; fi
+# MYJYSK (tasks and news): its address, a private file in keystore/; without it the app simply has no MYJYSK.
+# Who the employee is (name, number) is never built in: the app asks StoreFront once and keeps it on the phone
+# (Postavke), so no APK, test or public file carries a person's data.
+MJHOST=""
 if [ -s keystore/myjysk-host.txt ]; then MJHOST="$(tr -d ' \r\n' < keystore/myjysk-host.txt | rev)"; fi
-if [ -s keystore/myjysk-me.txt ]; then MJME="$(tr -d '\r\n' < keystore/myjysk-me.txt)"; fi
 # the planogram server the store concept pages link to (private file); planograms are downloaded only from there
 PLHOST=""
 if [ -s keystore/plans-host.txt ]; then PLHOST="$(tr -d ' \r\n' < keystore/plans-host.txt | rev)"; fi
-case "$MJHOST$MJME$PLHOST" in *[\<\>\&\'\"\`\$\\]*) echo "MYJYSK files must not contain < > & ' \" \` $ \\"; exit 1;; esac
+case "$MJHOST$PLHOST" in *[\<\>\&\'\"\`\$\\]*) echo "MYJYSK files must not contain < > & ' \" \` $ \\"; exit 1;; esac
 # the name the app shows (launcher, title, texts): private file keystore/appname.txt; without it the neutral name
 APPNAME="Polica"
 if [ -s keystore/appname.txt ]; then APPNAME="$(tr -d '\r\n' < keystore/appname.txt)"; fi
@@ -49,7 +51,6 @@ cat > build/res-gen/values/config.xml <<XML
     <string name="storefront_host" translatable="false">$HOSTNAME</string>
     <string name="update_repo" translatable="false">$UPDATE_REPO</string>
     <string name="myjysk_host" translatable="false">$MJHOST</string>
-    <string name="myjysk_me" translatable="false">$MJME</string>
     <string name="plans_host" translatable="false">$PLHOST</string>
     <string name="app_name">$APPNAME</string>
     <string name="import_label">Dodaj u $APPNAME</string>
@@ -103,3 +104,23 @@ java -jar "$T/uber-apk-signer.jar" -a build/app-unsigned.apk -o build/signed \
   | grep -v JAVA_TOOL_OPTIONS | grep -E -i "error|fail|signed|verify" | head -20 || true
 cp build/signed/*-aligned-signed.apk "out/Polica-$VERSION_NAME.apk"
 ls -la out
+
+# Guard: no person's data in what is built. keystore/private-words.txt (private, never published) lists words that
+# must never be in an APK (a name, an employee number); the build fails if any of them is found in the file or in
+# any file packed inside it.
+if [ -s keystore/private-words.txt ]; then
+  python3 - "out/Polica-$VERSION_NAME.apk" keystore/private-words.txt <<'PY'
+import re, sys, zipfile
+apk, words = sys.argv[1], sys.argv[2]
+toks = [t for t in re.split(r'[,;\s]+', open(words, encoding='utf-8').read()) if len(t) >= 4]
+blobs = [open(apk, 'rb').read()]
+with zipfile.ZipFile(apk) as z:
+    blobs += [z.read(n) for n in z.namelist()]
+for b in blobs:
+    for enc in ('utf-8', 'utf-16-le'):
+        for t in toks:
+            if t.encode(enc) in b or t.lower().encode(enc) in b.lower():
+                sys.exit('STOP: a private word is inside the APK (not printed). Nothing was published.')
+print('private data check: clean')
+PY
+fi

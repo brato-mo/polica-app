@@ -777,7 +777,7 @@ const DEFAULTS = {
   xmas: core.XMAS_WORDS, // the words that make a name a Christmas / New Year one
   upd: true, // look for a new version of the app when it is opened
   mj: true, // read MYJYSK every morning at 8:00 and send a notification when there is something new
-  mjMe: null, // who the employee is in MYJYSK (names, numbers, comma between); null = what the build says
+  mjMe: null, // who the employee is in MYJYSK (names, numbers, comma between); null = not known yet (filled once from StoreFront, kept on the phone)
   plSide: 'left', // the store's planograms: left or right side
   plCompact: false, // SC 3.0 Compact store
   plOrg: '1014BIH', // the country whose planograms are taken
@@ -856,7 +856,7 @@ function renderSettings() {
 
   ${mjOn() ? `<section class="set-block"><h3>Vijesti (MYJYSK)</h3><div class="set-card">
     ${sw('mj', 'Svako jutro u 8:00', 'Zadaci i vijesti iz MYJYSK se sami učitaju, a obavijest dođe kad ima nešto novo. Android može pomjeriti za koju minutu. Radi dok si prijavljen u MYJYSK.', c.mj)}
-    <div class="set-row set-col"><div class="set-txt"><b>Ja u MYJYSK</b><small>Ime i prezime ili broj, odvojeno zarezom. Zadaci na kojima piše ovo idu pod „Za mene“, kao i zadaci za Store Staff i sve uloge.</small></div>
+    <div class="set-row set-col"><div class="set-txt"><b>Ja u MYJYSK</b><small>Ime i prezime ili broj, odvojeno zarezom. Zadaci na kojima piše ovo idu pod „Za mene“, kao i zadaci za Store Staff i sve uloge. Čuva se samo na ovom telefonu; ako je prazno, aplikacija ga jednom uzme iz StoreFronta.</small></div>
       <input class="set-input" id="mjMe" type="text" value="${esc(mjMe())}" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Ja u MYJYSK"></div>
     ${act('mj-refresh', 'Osvježi sada', S.user.mj && S.user.mj.at ? `Stanje ${esc(ageText(S.user.mj.at))}` : 'Još nije učitano')}
   </div></section>
@@ -4230,6 +4230,25 @@ function boot() {
   setTimeout(() => checkUpdate(false), 1500);
   setTimeout(refreshOld, 400);
   setTimeout(() => pageCache.start(), 6000); // pages of all planograms, after the start has settled
+  setTimeout(fillMe, 4000);
+}
+
+/**
+ * Who the employee is in MYJYSK (name, number), for the tasks that name him. It is never built into the app any more:
+ * when the settings have nothing yet (a new install, or the update from a build that carried it), it is asked once
+ * from StoreFront's own user details and kept on the phone. What the employee typed in Postavke is never replaced.
+ */
+function fillMe() {
+  if (cfg().mjMe != null || !mjOn() || S.meAsked) return;
+  S.meAsked = true;
+  stCall({ mode: 'me' }, (r) => {
+    if (r.how !== 'ok' || !r.res || cfg().mjMe != null) return;
+    const v = [r.res.name, r.res.num].map((x) => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(', ').slice(0, 120);
+    if (!v) return;
+    setCfg({ mjMe: v });
+    if ($('#settings').classList.contains('is-active')) renderSettings();
+    renderHome();
+  });
 }
 
 boot();

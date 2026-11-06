@@ -1082,14 +1082,13 @@ public class MainActivity extends Activity {
             return MyjyskReader.enabled(MainActivity.this);
         }
 
-        /** Who the employee is in MYJYSK (name, number), from the build; the page may change it in the settings. */
+        /**
+         * Who the employee is in MYJYSK (name, number). Never built in any more: the page keeps it in its settings on
+         * the phone (filled once from StoreFront's own user details, changeable in Postavke). Kept for older pages.
+         */
         @JavascriptInterface
         public String myjyskMe() {
-            try {
-                return getString(R.string.myjysk_me);
-            } catch (Exception e) {
-                return "";
-            }
+            return "";
         }
 
         /** Reads the MYJYSK tasks and news: hidden (visible = false) or on the sign-in screen. Answer: window.onMyjysk. */

@@ -6,6 +6,8 @@
 //                                   ones also the last 7 days, from their stock history
 //   { mode: 'smdm', cat, st }       articles of the department with these status codes and an SM value above 0
 //   { mode: 'smset', items: [{ num, sm, dm }] }  saves these SM/DM values (only what the employee confirmed)
+//   { mode: 'me' }                  who the employee is (name, number), to keep in the app's own settings
+//   { mode: 'opcheck', items, since }  read only: stock history and Minus lista after a sending with unknown outcome
 // Only 'smset' changes anything. The result is left in window.__st for the app to pick up.
 (function () {
   if (window.__st && window.__st.state === 'busy') return;
@@ -36,9 +38,11 @@
   function mine(x) { return !only || !!only[x.num]; }
   // the product groups to look in: the department's own groups when the app knows them, else the whole group
   var cats = (Array.isArray(arg.cats) ? arg.cats : []).map(function (c) { return s(c, 8); }).filter(function (c) { return /^\d{1,8}$/.test(c); }).slice(0, 80);
-  var store = '', catalog = '';
+  var store = '', catalog = '', meUser = { name: '', num: '', user: '' };
   function who() {
     return get('/api/v1/websapapi/user-details').then(function (u) {
+      var ud = (u && u.userDetails) || {};
+      meUser = { name: s(ud.name, 80), num: /^\d{3,12}$/.test(s(ud.employeeNumber, 12)) ? s(ud.employeeNumber, 12) : '', user: s(ud.username, 20) };
       var si = u && u.userDetails && u.userDetails.storeInfo;
       store = si && s(si.storeId, 10);
       catalog = si && s(si.catalogId, 30);
@@ -293,7 +297,43 @@
     }).then(function () { return { done: done, failed: failed }; });
   }
 
-  var run = { find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
+  // who the employee is (name and number, as StoreFront has them): the app keeps it in its own settings, on the phone
+  function me() {
+    return Promise.resolve({ name: meUser.name, num: meUser.num });
+  }
+
+  // Read only. After a sending whose outcome is not known: what StoreFront's stock history shows for these articles
+  // since shortly before the sending, and whether they are still on the Minus lista. The app compares; it never
+  // decides on its own that something went through.
+  function opcheck() {
+    var items = (Array.isArray(arg.items) ? arg.items : []).slice(0, 60).filter(function (x) {
+      return x && /^\d{7}$/.test(String(x.num)) && /^\d{7}$/.test(String(x.target));
+    });
+    if (!items.length) throw 'bad input';
+    var since = +arg.since || 0;
+    var arts = {};
+    items.forEach(function (x) { arts[x.num] = 1; arts[x.target] = 1; });
+    var mineIds = [meUser.user, meUser.num].filter(Boolean);
+    var hist = [];
+    return inBatches(Object.keys(arts), 4, function (a) {
+      return get('/api/v1/stockhistory/' + encodeURIComponent(store) + '/' + a).then(function (h) {
+        (Array.isArray(h) ? h : []).forEach(function (x) {
+          var t = typeof x.entryTime === 'number' ? x.entryTime : Date.parse(String(x.entryTimeIsoTime || '').replace(/\[.*\]$/, ''));
+          if (!isFinite(t) || t < since - 6 * 3600000) return;
+          hist.push({ art: a, q: num(x.quantity), type: s(x.movementType, 4), t: t,
+            mine: mineIds.indexOf(s(x.username, 20)) >= 0 || mineIds.indexOf(s(x.performedBy, 20)) >= 0 });
+        });
+      });
+    }).then(function () {
+      return get('/api/v1/minus-list/' + encodeURIComponent(store) + '?include=Article');
+    }).then(function (list) {
+      var minus = {};
+      (Array.isArray(list) ? list : []).forEach(function (x) { minus[s(x.articleId, 10)] = num(x.totalStock); });
+      return { at: Date.now(), hist: hist, minus: minus };
+    });
+  }
+
+  var run = { me: me, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {
