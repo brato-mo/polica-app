@@ -253,11 +253,14 @@
   // with nothing left in stock. With price, date of the status and the replacement number that is still sold.
   function clear() {
     var cs = cats.length ? cats : [s(arg.cat || '5', 8)];
-    var b = { storeId: store, catalogId: catalog, categories: cs, statusCodes: ['21', '81'], stockValueQuantityParameters: [{ operator: 'GT', value: 0 }], start: '0', max: '3000' };
+    // StoreFront ignores the stock filter and answers with every 21/81 article of the group (furniture: ~2600 rows,
+    // ~25 s in one request). The same rows are asked for as two requests side by side, one per status code, so the
+    // answer comes in about the time of the bigger half; the list is the same.
+    var by = function (st) { return { storeId: store, catalogId: catalog, categories: cs, statusCodes: [st], stockValueQuantityParameters: [{ operator: 'GT', value: 0 }], start: '0', max: '3000' }; };
     var d = { storeId: store, catalogId: catalog, categories: cs, statusCodes: ['21', '81'], smDmQuantityParameters: [{ operator: 'GT', value: 0, field: 'DM' }], start: '0', max: '500' };
-    return Promise.all([req('POST', '/api/v1/article/search?include=SmDm', b), req('POST', '/api/v1/article/search?include=SmDm', d)]).then(function (r) {
+    return Promise.all([req('POST', '/api/v1/article/search?include=SmDm', by('21')), req('POST', '/api/v1/article/search?include=SmDm', by('81')), req('POST', '/api/v1/article/search?include=SmDm', d)]).then(function (r) {
       var seen = {}, list = [];
-      ((r[0] && r[0].articleResults) || []).concat((r[1] && r[1].articleResults) || []).forEach(function (a) {
+      ((r[0] && r[0].articleResults) || []).concat((r[1] && r[1].articleResults) || [], (r[2] && r[2].articleResults) || []).forEach(function (a) {
         var x = row(a);
         x.chg = s(a.dateStatusChangeFmt, 10);
         if (seen[x.num] || !(x.stock > 0 || x.dm > 0)) return;
