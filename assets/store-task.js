@@ -292,7 +292,7 @@
 
   function smset() {
     var items = (Array.isArray(arg.items) ? arg.items : []).slice(0, 300).filter(function (x) {
-      return x && /^\d{7}$/.test(String(x.num)) && isFinite(+x.sm) && +x.sm >= 0 && +x.sm <= 9999 && isFinite(+x.dm) && +x.dm >= 0 && +x.dm <= 9999;
+      return x && /^(\d{7}|S\d{6})$/.test(String(x.num)) && isFinite(+x.sm) && +x.sm >= 0 && +x.sm <= 9999 && isFinite(+x.dm) && +x.dm >= 0 && +x.dm <= 9999;
     });
     if (!items.length) throw 'bad input';
     var done = [], failed = [];

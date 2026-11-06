@@ -2388,7 +2388,7 @@ function smSend(items) {
       S.sm.result = { done: done.size, failed: r.res.failed || [] };
       saveUser();
     } else {
-      S.sm.result = { done: 0, failed: [], err: r.how === 'login' ? 'StoreFront traži prijavu. Ništa nije promijenjeno ili samo dio; učitaj listu ponovo.' : 'StoreFront nije odgovorio do kraja. Učitaj listu ponovo da vidiš šta je promijenjeno.' };
+      S.sm.result = { done: 0, failed: [], err: r.how === 'bad' ? 'Ova verzija aplikacije ne zna spremiti te artikle. Ažuriraj je.' : r.how === 'login' ? 'StoreFront traži prijavu. Ništa nije promijenjeno ili samo dio; učitaj listu ponovo.' : 'StoreFront nije odgovorio do kraja. Učitaj listu ponovo da vidiš šta je promijenjeno.' };
     }
     renderSmBar();
     if (top().id === 'smdm') renderSm();
