@@ -586,7 +586,9 @@ function clrRowFurn(x, xm) {
       </span>
       ${icon('chev', 'chev')}
     </button>
-    ${hidden ? `<div class="clr-dm"><span>Zaliha 0, a ${x.dm > 1 ? `${whole(x.dm)} komada stoje` : 'komad stoji'} u DM: kupci ga ne vide na zalihi. Kad se skine s DM, zaliha pređe sa 0 na ${whole(x.dm)}.</span>
+    ${hidden ? `<div class="clr-dm"><span>${x.stock + x.dm > 0
+      ? `Zaliha ${whole(x.stock)}, a ${x.dm > 1 ? `${whole(x.dm)} komada stoje` : 'komad stoji'} u DM: kupci ${x.dm > 1 ? 'ih' : 'ga'} ne vide na zalihi. Kad se skine s DM, zaliha pređe sa ${whole(x.stock)} na ${whole(x.stock + x.dm)}.`
+      : `Zaliha ${whole(x.stock)} uz DM ${whole(x.dm)}: izloženi komad je vjerovatno prodan, a DM nije skinut. Kad se skine s DM, zaliha bude ${whole(x.stock + x.dm)} (tačno stanje).`}</span>
       <button class="btn btn-soft btn-small" type="button" data-clr-dm="${esc(x.num)}" ${S.clr.busy ? 'disabled' : ''}>Skini s DM (DM na 0)</button></div>` : ''}
   </div>`;
 }
@@ -595,7 +597,7 @@ async function clrDmOff(num) {
   const src = clrSrc();
   const x = src && src.list.find((y) => y.num === num);
   if (!x || S.clr.busy) return;
-  const yes = await ask(`Skinuti ${num} s DM?`, `<p>${esc(x.name)}</p><p>DM ${whole(x.dm)} → 0 (SM ostaje ${whole(x.sm)}). Izloženi ${x.dm > 1 ? 'komadi prelaze' : 'komad prelazi'} na zalihu (0 → ${whole(x.stock + x.dm)}) i kupci ${x.dm > 1 ? 'ih' : 'ga'} vide kao dostupan. Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
+  const yes = await ask(`Skinuti ${num} s DM?`, `<p>${esc(x.name)}</p><p>DM ${whole(x.dm)} → 0 (SM ostaje ${whole(x.sm)}). Zaliha ${whole(x.stock)} → ${whole(x.stock + x.dm)}${x.stock + x.dm > 0 ? `: kupci ${x.dm > 1 ? 'ih' : 'ga'} vide kao dostupan` : ': izloženi komad je prodan, stanje postaje tačno'}. Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
     [{ label: 'Skini s DM', kind: 'btn-primary', value: true }, { label: 'Odustani', value: false }]);
   if (!yes) return;
   S.clr.busy = 'dm';
@@ -638,14 +640,14 @@ function renderClearList() {
   if (!c || !$('#clrList')) return;
   const v = clrView();
   const list = clrFiltered();
-  const value = list.reduce((s, x) => s + (x.price || 0) * x.stock, 0);
+  const value = list.reduce((s, x) => s + (x.price || 0) * Math.max(0, x.stock), 0);
   const usual = cfg().xmas === core.XMAS_WORDS; // with the words of the settings changed the name "Christmas" would not be true
   const here = v.xs.filter((x) => S.clr.st === 'all' || x.st === S.clr.st).length; // in the status that is open
   const xm = here || (S.clr.peek && v.xmas) ? `<button class="clr-xmas" type="button" data-clr-xmas="1">${S.clr.peek
     ? `Prikazani su i ${usual ? 'božićni i novogodišnji' : 'sakriveni po riječima iz postavki'}${here ? `: ${here}` : ''} · Sakrij`
     : `Sakriveno ${usual ? 'božićnih i novogodišnjih' : 'po riječima iz postavki'}: ${here} · Prikaži`}</button>` : '';
   const hid = c.dept === 'furn' ? list.filter((x) => x.dm > 0 && x.stock <= 0).length : 0;
-  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}${c.dept === 'furn' ? ' · bez zamjenske šifre' : ''}</small>${hid ? `<small class="clr-hid">Na izlogu sa zalihom 0: ${hid} (prvi na listi)</small>` : ''}${xm}`;
+  $('#clrSum').innerHTML = `<b>${list.length} ${plural(list.length, 'artikal', 'artikla', 'artikala')}</b><small>Vrijednost zalihe ${whole(value)} KM · ${esc(ageText(c.at))}${c.dept === 'furn' ? ' · bez zamjenske šifre' : ''}</small>${hid ? `<small class="clr-hid">Na izlogu (DM) sa zalihom 0 ili manje: ${hid} (prvi na listi)</small>` : ''}${xm}`;
   $('#clrList').innerHTML = list.length ? `<div class="list">${list.map((x) => clrRow(x, S.clr.peek && v.flag(x))).join('')}</div>` : '<p class="empty">Nema artikala za ovaj izbor.</p>';
   const lim = (c.limited || []);
   const notes = [];

@@ -1,7 +1,7 @@
 {
- "code": 56,
- "name": "1.55",
- "notes": "Za rasprodaju: Homeware (samo grupe tvog odjela, bez Božića) i Namještaj (21/81 bez zamjenske šifre, izloženi sa zalihom 0 prvi, skidanje s DM jednim dodirom)",
+ "code": 57,
+ "name": "1.56",
+ "notes": "Za rasprodaju, namještaj: tačno stanje uz DM (npr. -1 uz DM 1 = izloženi komad prodan, poslije skidanja s DM stanje 0)",
  "size": 1991438,
- "sha256": "376bf87fa870b395b8db2df328ced5211b8fd835bd1073f5e9514e7617975bdb"
+ "sha256": "66cadecd25004b5dd9cba6bee3bb405b35f3a8fcd58fcd07b5cde0f703167235"
 }
