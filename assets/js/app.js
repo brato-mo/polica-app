@@ -184,19 +184,7 @@ function pictureOf(num) {
   return null;
 }
 
-/** An article's picture: from its planogram, else the one from StoreFront (asked for when the row is on screen).
- *  big: a tap on the picture opens it large (not for rows that open something themselves). */
-function thumb(num, cls = '', big = false) {
-  const src = pictureOf(num);
-  if (src) return `<span class="thumb ${cls}"><img src="${src}" alt="" loading="lazy" decoding="async"></span>`;
-  if (!/^\d{7}$/.test(String(num || ''))) return `<span class="thumb ${cls}">${icon('box')}</span>`;
-  const b = big ? ` data-bigok="1"` : '';
-  const sf = sfSrc(num);
-  if (sf) return `<span class="thumb thumb-sf ${cls}" data-pic="${esc(num)}"${b}${big ? ` data-big="${esc(num)}"` : ''}><img src="${sf}" alt="" loading="lazy" decoding="async"></span>`;
-  return `<span class="thumb ${cls}" data-pic="${esc(num)}"${b} data-want="1">${icon('box')}</span>`;
-}
-
-// ------------------------------------------- pictures from StoreFront (articles in no planogram)
+// ------------------------------------------- pictures from StoreFront
 // StoreFront names the article's picture (read only), the phone fetches it from JYSK's own image server and keeps it:
 // sf-pics.json = { num: { f: file name | '' (StoreFront has none), at } }. A picture is asked for once; "none" is
 // asked again after a week. Nothing is asked without a StoreFront sign-in.
@@ -208,7 +196,22 @@ function sfPics() {
   if (!sfMap) { sfMap = store.read('sf-pics.json', {}) || {}; if (typeof sfMap !== 'object' || Array.isArray(sfMap)) sfMap = {}; }
   return sfMap;
 }
+const sfKnownNone = (num) => { const p = sfPics()[num]; return !!p && !p.f && Date.now() - (p.at || 0) < 7 * 86400000; };
 const sfSrc = (num) => { const p = sfPics()[num]; return p && p.f ? `/files/thumbs/${SF_DIR}/${encodeURIComponent(p.f)}` : null; };
+
+/** An article's picture. StoreFront's picture comes first (it is the article's own; a picture cut out of a
+ *  planogram PDF can belong to the neighbour). Until StoreFront's is here, or when StoreFront has none, the
+ *  planogram's is shown. StoreFront's is asked for when the row is on screen.
+ *  big: a tap on the picture opens it large (not for rows that open something themselves). */
+function thumb(num, cls = '', big = false) {
+  const own = pictureOf(num);
+  if (!/^\d{7}$/.test(String(num || ''))) return `<span class="thumb ${cls}">${own ? `<img src="${own}" alt="" loading="lazy" decoding="async">` : icon('box')}</span>`;
+  const b = big ? ` data-bigok="1"` : '';
+  const sf = sfSrc(num);
+  if (sf) return `<span class="thumb thumb-sf ${cls}" data-pic="${esc(num)}"${b}${big ? ` data-big="${esc(num)}"` : ''}><img src="${sf}" alt="" loading="lazy" decoding="async"></span>`;
+  const want = sfKnownNone(num) ? '' : ' data-want="1"';
+  return `<span class="thumb ${cls}" data-pic="${esc(num)}"${b}${want}>${own ? `<img src="${own}" alt="" loading="lazy" decoding="async">` : icon('box')}</span>`;
+}
 
 /** Thumb of a row that opens nothing itself: a tap on the picture opens it large. */
 const sfThumb = (num) => thumb(num, '', true);
