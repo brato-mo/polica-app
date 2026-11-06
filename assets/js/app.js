@@ -3511,9 +3511,15 @@ function metaOf(id, f, plan) {
 async function savePictures(id, thumbs, onStep) {
   const list = [...thumbs.entries()];
   const encoded = new Map(); // the same photo is shared by several numbers
+  // the pictures are turned into text 16 at a time (in the background), then written in order
+  const uniq = [...new Set(list.map(([, b]) => b))];
+  for (let i = 0; i < uniq.length; i += 16) {
+    const part = uniq.slice(i, i + 16);
+    const txt = await Promise.all(part.map((b) => blobToBase64(b)));
+    part.forEach((b, j) => encoded.set(b, txt[j]));
+  }
   let done = 0;
   for (const [num, blob] of list) {
-    if (!encoded.has(blob)) encoded.set(blob, await blobToBase64(blob));
     A.writeThumb(id, `${num}.webp`, encoded.get(blob));
     done++;
     if (onStep && done % 10 === 0) { onStep(done, list.length); await new Promise((r) => setTimeout(r, 0)); }

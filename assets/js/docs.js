@@ -110,7 +110,8 @@ async function thumbOf(page, parts) {
     ctx.drawImage(src, 0, 0, w, h);
     ctx.restore();
   }
-  return new Promise((resolve) => c.toBlob((blob) => resolve(blob), 'image/webp', 0.82));
+  // not awaited by the caller: the encoding runs while the next pictures are cut out
+  return { encoding: new Promise((resolve) => c.toBlob((blob) => resolve(blob), 'image/webp', 0.82)) };
 }
 
 /**
@@ -134,10 +135,17 @@ export async function readPlanogram(url, onStep, { pictures = true } = {}) {
     const pages = raw.map((r) => analyzePage(r, ctx));
     const thumbs = new Map();
     const work = pages.map((p, i) => (p.kind === 'drawing' || p.kind === 'table' ? i : -1)).filter((i) => i >= 0);
+    // pdf.js reads a page's drawing (and decodes its photos) in its worker while this thread cuts out the pictures of
+    // the page before: the next page is always asked for ahead. Same result, the two halves overlap instead of taking
+    // turns.
+    const ahead = (k) => (k < work.length ? doc.getPage(work[k] + 1).then((pg) => { pg.getOperatorList().catch(() => {}); return pg; }) : null);
+    let next = ahead(0);
+    const pending = []; // pictures still being encoded: waited for once, at the end
     for (let k = 0; k < work.length; k++) {
       const i = work[k];
       const pg = pages[i];
-      const page = await doc.getPage(i + 1);
+      const page = await next;
+      next = ahead(k + 1);
       try {
         const gfx = await pageGraphics(page, pdfjs.OPS);
         if (pg.kind === 'drawing') placeLabels(pg, gfx);
@@ -152,8 +160,12 @@ export async function readPlanogram(url, onStep, { pictures = true } = {}) {
           for (const { nums, parts } of want) {
             if (!parts.length || nums.every((x) => thumbs.has(x))) continue;
             const key = parts.map((ph) => ph.id || ph.b.join(',')).join('|');
-            if (!made.has(key)) made.set(key, await thumbOf(page, parts).catch(() => null));
-            const blob = made.get(key);
+            // the picture is cut out now (it needs this page), its WebP encoding finishes in the background
+            if (!made.has(key)) {
+              const t = await thumbOf(page, parts).catch(() => null);
+              made.set(key, t ? t.encoding.catch(() => null) : null);
+            }
+            const blob = made.get(key); // a promise of the picture while it is being encoded
             if (blob) for (const x of nums) if (!thumbs.has(x)) thumbs.set(x, blob);
           }
         }
@@ -162,6 +174,11 @@ export async function readPlanogram(url, onStep, { pictures = true } = {}) {
       }
       page.cleanup();
       if (onStep) onStep(0.3 + (0.7 * (k + 1)) / work.length, i + 1, n, 'pictures');
+    }
+    // the encodings, in the order they were started; a picture that failed is left out as before
+    for (const [num, b] of [...thumbs.entries()]) {
+      const blob = await b;
+      if (blob) thumbs.set(num, blob); else thumbs.delete(num);
     }
     const plan = buildPlan(pages);
     rescueLabels(plan, raw);

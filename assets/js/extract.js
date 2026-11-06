@@ -15,10 +15,13 @@ export function mul(m, n) {
 
 export async function readPages(doc, onPage) {
   const out = [];
+  // the next page's text is asked for while this one is handled (the worker reads it meanwhile)
+  const ask = (i) => (i <= doc.numPages ? doc.getPage(i).then((page) => page.getTextContent().then((tc) => ({ page, tc }))) : null);
+  let next = ask(1);
   for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
+    const { page, tc } = await next;
+    next = ask(i + 1);
     const vp = page.getViewport({ scale: 1 });
-    const tc = await page.getTextContent();
     const items = [];
     for (const it of tc.items) {
       if (typeof it.str !== 'string' || !it.str.trim()) continue;
