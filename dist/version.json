@@ -1,7 +1,7 @@
 {
- "code": 65,
- "name": "1.63",
- "notes": "Skeniranje odmah pokazuje mjesto: aplikacija unaprijed uzme barkodove svih artikala iz tvojih planograma iz StoreFronta; ako StoreFront nađe tačno jedan artikal iz planograma, odmah ga otvori",
+ "code": 66,
+ "name": "1.64",
+ "notes": "SM i DM: nova kartica Vrt sa svim SM/DM vrijednostima vrtnog asortimana (namještaj, jastuci, suncobrani…) i dugme da se sve stavi na 0",
  "size": 2024484,
- "sha256": "1187611c7c453dd68e3966ade3f49c9bf026beb63abe83c758e0a7647c7cc363"
+ "sha256": "8f2433e749a30a825cee6ed12a7d4e91c636fa5c232ad5ae16d7bcde3c9de2e2"
 }
