@@ -7,10 +7,13 @@ import android.os.Handler;
 public class WebView extends android.view.View {
     public interface Page { void injected(String script); String mx(); boolean dead(); }
     public static volatile Page current; public static volatile boolean neverLoads; public static volatile String lastInjected;
+    /** When set, every new WebView gets its own page (several hidden pages at once). */
+    public static volatile java.util.function.Function<WebView, Page> factory;
+    Page own;
     public static final java.util.List<WebView> made = new java.util.concurrent.CopyOnWriteArrayList<>();
     final android.content.Context ctx; String url; int progress; WebViewClient client; public boolean destroyed;
     final Handler h = new Handler();
-    public WebView(android.content.Context c) { ctx = c; made.add(this); }
+    public WebView(android.content.Context c) { ctx = c; made.add(this); if (factory != null) own = factory.apply(this); }
     public android.content.Context getContext() { return ctx; }
     public WebSettings getSettings() { return new WebSettings(); }
     public void setWebViewClient(WebViewClient c) { client = c; }
@@ -21,8 +24,8 @@ public class WebView extends android.view.View {
     public String getUrl() { return url; } public int getProgress() { return progress; }
     public void evaluateJavascript(String s, ValueCallback<String> cb) {
         if (destroyed) return;
-        Page p = current;
-        if (s.startsWith("window.__mx=null")) { lastInjected = s; if (p != null) p.injected(s); return; }
+        Page p = own != null ? own : current;
+        if (s.startsWith("window.__mx=null") || s.startsWith("window.__st=null")) { lastInjected = s; if (p != null) p.injected(s); return; }
         if (p != null && p.dead()) return; // a page that stopped answering: the callback never comes
         String v = p == null ? null : p.mx();
         if (cb != null) h.post(() -> cb.onReceiveValue(v == null ? "null" : org.json.JSONObject.quote(v)));

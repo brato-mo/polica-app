@@ -105,6 +105,72 @@ public class Harness {
         check(new org.json.JSONArray(Upgrade.list(c)).length() == backup.list().length, "list shows them");
     }
 
+    /** StoreTask (1.59): at most 2 jobs at a time, warm pages reused, a writing job on a page of its own. */
+    static void storeTasks() throws Exception {
+        System.out.println("scenario StoreFront jobs: queue and warm pages");
+        Context c = ctx("st-queue", "");
+        StoreTask.IDLE_MS = 3000;
+        final java.util.concurrent.atomic.AtomicInteger running = new java.util.concurrent.atomic.AtomicInteger(), most = new java.util.concurrent.atomic.AtomicInteger();
+        final List<String> injectedModes = new CopyOnWriteArrayList<>();
+        WebView.factory = (wv) -> new WebView.Page() {
+            volatile String v = null;
+            public void injected(String script) {
+                String arg = script.substring(script.indexOf("window.__stArg=") + 15, script.indexOf(";window.__stArg=JSON.parse"));
+                JSONObject a = new JSONObject((String) new JSONTokener(arg).nextValue());
+                injectedModes.add(a.optString("mode"));
+                int now = running.incrementAndGet(); most.accumulateAndGet(now, Math::max);
+                v = new JSONObject().put("state", "busy").put("job", a.optString("job")).toString();
+                new Thread(() -> { try { Thread.sleep(a.optLong("ms", 600)); } catch (Exception e) { }
+                    running.decrementAndGet();
+                    v = new JSONObject().put("state", a.optBoolean("fail") ? "error" : "ok").put("job", a.optString("job")).put("err", a.optBoolean("fail") ? "http 500" : "").put("res", new JSONObject().put("mode", a.optString("mode"))).toString(); }).start();
+            }
+            public String mx() { return v; }
+            public boolean dead() { return false; }
+        };
+        int made0 = WebView.made.size();
+        Map<String, JSONObject> got = new ConcurrentHashMap<>();
+        Map<String, Long> at = new ConcurrentHashMap<>();
+        CountDownLatch five = new CountDownLatch(5);
+        long t0 = System.currentTimeMillis();
+        for (int i = 1; i <= 5; i++) {
+            final String job = "j" + i;
+            new android.os.Handler().post(() -> StoreTask.run(c, new ViewGroup(), "{\"mode\":\"article\",\"job\":\"" + job + "\",\"ms\":700" + (job.equals("j3") ? ",\"fail\":true" : "") + "}", ans -> { got.put(job, ans); at.put(job, System.currentTimeMillis() - t0); five.countDown(); }));
+        }
+        five.await(60, TimeUnit.SECONDS);
+        check(got.size() == 5, "all 5 jobs answered");
+        boolean right = true;
+        for (String k : got.keySet()) right &= k.equals(got.get(k).optString("job"));
+        check(right, "each answer carries its own job");
+        check(most.get() <= StoreTask.LANES, "never more than " + StoreTask.LANES + " jobs at once (most: " + most.get() + ")");
+        check(WebView.made.size() - made0 == 2, "5 jobs used 2 hidden pages (opened: " + (WebView.made.size() - made0) + ")");
+        check("error".equals(got.get("j3").optString("how")) && "ok".equals(got.get("j4").optString("how")), "a failed job does not spoil the next one on the same page");
+        System.out.println("  (answers after ms: " + new TreeMap<>(at) + ")");
+        // the pages are warm now: a new reading starts at once
+        CountDownLatch one = new CountDownLatch(1);
+        long t1 = System.currentTimeMillis();
+        final long[] took = {0};
+        new android.os.Handler().post(() -> StoreTask.run(c, new ViewGroup(), "{\"mode\":\"find\",\"job\":\"w1\",\"ms\":100}", ans -> { took[0] = System.currentTimeMillis() - t1; one.countDown(); }));
+        one.await(30, TimeUnit.SECONDS);
+        check(took[0] > 0 && took[0] < 1500 && WebView.made.size() - made0 == 2, "warm page: next reading answered in " + took[0] + " ms, no new page");
+        // a writing job: a page of its own, closed right after, injected once
+        CountDownLatch w = new CountDownLatch(1);
+        new android.os.Handler().post(() -> StoreTask.run(c, new ViewGroup(), "{\"mode\":\"smset\",\"job\":\"s1\",\"ms\":300}", ans -> w.countDown()));
+        w.await(30, TimeUnit.SECONDS);
+        Thread.sleep(300);
+        WebView last = WebView.made.get(WebView.made.size() - 1);
+        check(WebView.made.size() - made0 == 3 && last.destroyed, "saving SM/DM: a new page, closed right after");
+        check(injectedModes.stream().filter("smset"::equals).count() == 1, "the saving was injected exactly once");
+        Thread.sleep(StoreTask.IDLE_MS + 1500);
+        check(StoreTask.openPages() == 0 && StoreTask.waiting() == 0, "idle pages closed after the idle time");
+        // what the hidden pages do not load
+        String sf = "storefront.example.test";
+        java.util.function.BiFunction<String, String, Boolean> skipped = (host, path) -> StoreTask.lean(sf, new android.webkit.WebResourceRequest() {
+            public android.net.Uri getUrl() { return android.net.Uri.parse("https://" + host + path); } public String getMethod() { return "GET"; } }) != null;
+        check(skipped.apply(sf, "/ui/assets/index-BTrT6ur3.js") && skipped.apply(sf, "/ui/assets/index.css") && skipped.apply("bam.nr-data.net", "/1/x"), "StoreFront's own screen scripts/styles and telemetry are not loaded");
+        check(!skipped.apply(sf, "/ui/") && !skipped.apply(sf, "/api/v1/minus-list/X") && !skipped.apply(sf, "/my.policy") && !skipped.apply("idp.example.test", "/my.policy"), "the page, the API and the sign-in still load");
+        WebView.factory = null;
+    }
+
     public static void main(String[] a) throws Exception {
         String mode = a.length > 0 ? a[0] : "quick";
         JSONObject sc = new JSONObject(new String(Files.readAllBytes(Paths.get(System.getProperty("scenarios"))), "UTF-8"));
@@ -201,6 +267,7 @@ public class Harness {
                 public android.net.Uri getUrl() { return android.net.Uri.parse("https://" + sf + "/api/v1/stock-adjustments"); }
                 public String getMethod() { return "POST"; } }).status == 403, "test build: guard answers 403 on the phone");
             upgrade();
+            storeTasks();
         } else if (mode.equals("hang") || mode.equals("dead")) {
             boolean dead = mode.equals("dead");
             System.out.println("scenario " + mode + " (real 120 s time limit)");
