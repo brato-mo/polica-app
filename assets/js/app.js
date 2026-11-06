@@ -184,9 +184,16 @@ function pictureOf(num) {
   return null;
 }
 
-function thumb(num, cls = '') {
+/** An article's picture: from its planogram, else the one from StoreFront (asked for when the row is on screen).
+ *  big: a tap on the picture opens it large (not for rows that open something themselves). */
+function thumb(num, cls = '', big = false) {
   const src = pictureOf(num);
-  return `<span class="thumb ${cls}">${src ? `<img src="${src}" alt="" loading="lazy" decoding="async">` : icon('box')}</span>`;
+  if (src) return `<span class="thumb ${cls}"><img src="${src}" alt="" loading="lazy" decoding="async"></span>`;
+  if (!/^\d{7}$/.test(String(num || ''))) return `<span class="thumb ${cls}">${icon('box')}</span>`;
+  const b = big ? ` data-bigok="1"` : '';
+  const sf = sfSrc(num);
+  if (sf) return `<span class="thumb thumb-sf ${cls}" data-pic="${esc(num)}"${b}${big ? ` data-big="${esc(num)}"` : ''}><img src="${sf}" alt="" loading="lazy" decoding="async"></span>`;
+  return `<span class="thumb ${cls}" data-pic="${esc(num)}"${b} data-want="1">${icon('box')}</span>`;
 }
 
 // ------------------------------------------- pictures from StoreFront (articles in no planogram)
@@ -203,15 +210,8 @@ function sfPics() {
 }
 const sfSrc = (num) => { const p = sfPics()[num]; return p && p.f ? `/files/thumbs/${SF_DIR}/${encodeURIComponent(p.f)}` : null; };
 
-/** Thumb of an article that may be in no planogram: its planogram picture, else StoreFront's (asked for if missing). */
-function sfThumb(num) {
-  if (!/^\d{7}$/.test(String(num || ''))) return `<span class="thumb">${icon('box')}</span>`;
-  const own = pictureOf(num);
-  if (own) return thumb(num);
-  const src = sfSrc(num);
-  if (src) return `<span class="thumb thumb-sf" data-pic="${esc(num)}" data-big="${esc(num)}"><img src="${src}" alt="" loading="lazy" decoding="async"></span>`;
-  return `<span class="thumb" data-pic="${esc(num)}" data-want="1">${icon('box')}</span>`;
-}
+/** Thumb of a row that opens nothing itself: a tap on the picture opens it large. */
+const sfThumb = (num) => thumb(num, '', true);
 
 // a picture is asked for only once its row is on the screen (a long Rasprodaja list does not ask for hundreds)
 const sfSeen = 'IntersectionObserver' in window
@@ -271,7 +271,7 @@ window.onSfPictures = (list) => {
     for (const el of document.querySelectorAll(`[data-pic="${x.num}"]`)) {
       el.classList.add('thumb-sf');
       el.removeAttribute('data-want');
-      el.dataset.big = x.num;
+      if (el.dataset.bigok) el.dataset.big = x.num;
       el.innerHTML = `<img src="${src}" alt="" decoding="async">`;
     }
   }
@@ -692,7 +692,7 @@ function clrRowFurn(x, xm) {
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.groupName].filter(Boolean).join(' · ');
   return `<div class="clr-furn${hidden ? ' is-hidden' : ''}">
     <button class="item clr-item" type="button" data-store="${esc(x.num)}">
-      ${sfThumb(x.num)}
+      ${thumb(x.num)}
       <span class="item-main">
         <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${shown ? `<span class="pill pill-dm">Na izlogu · DM ${whole(x.dm)}</span>` : ''}${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
         <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
@@ -739,7 +739,7 @@ function clrRow(x, xm) {
   const free = x.free !== x.stock ? ` (slobodno ${whole(x.free)})` : '';
   const meta = [x.chg ? `Status od ${dmy(x.chg)}` : '', x.dd && !x.dd.endsWith('-9998') ? `DD ${dmy(x.dd)}` : ''].filter(Boolean).join(' · ');
   return `<button class="item clr-item" type="button" data-store="${esc(x.num)}">
-    ${sfThumb(x.num)}
+    ${thumb(x.num)}
     <span class="item-main">
       <span class="code">${esc(x.num)}<span class="pill pill-st pill-st${esc(x.st)}">Status ${esc(x.st)}</span>${xm ? '<span class="pill pill-st pill-xmas">Božić</span>' : ''}</span>
       <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
@@ -2121,9 +2121,18 @@ function stockLoad(num, force = false) {
   const ok = stCall({ mode: 'article', num }, (r) => {
     S.stock.set(num, { at: Date.now(), d: r.how === 'ok' ? r.res : (c && c.d) || null, err: r.how === 'ok' ? null : r.how });
     stockPaint(num);
+    sfName(num, r.how === 'ok' && r.res && r.res.md ? r.res.md.name : '');
   });
   if (ok) S.stock.set(num, { ...(c || {}), busy: true });
   stockPaint(num);
+}
+
+/** An article the planogram names without a name: StoreFront's name, shown where "Bez naziva" stands. */
+function sfName(num, name) {
+  if (!name) return;
+  const h = document.querySelector('#item .head .title');
+  const chip = document.querySelector('#item .head [data-copy]');
+  if (h && chip && chip.dataset.copy === num && /^Bez naziva$/.test(h.textContent.trim())) h.textContent = name;
 }
 
 function stockPaint(num) {
@@ -3107,7 +3116,7 @@ function renderItem() {
     section = sec ? `${sec.code} ${sec.name}` : null;
   }
   let h = `<div class="head">
-      ${thumb(num, 'thumb-lg')}
+      ${thumb(num, 'thumb-lg', true)}
       <div class="head-text">
         <span class="head-acts"><button class="code-chip" type="button" data-copy="${esc(num)}" aria-label="Kopiraj šifru ${esc(num)}">${esc(num)} ${icon('copy', 'ico-sm')}</button>
           <button class="fav-btn" type="button" data-fav="${esc(num)}" aria-pressed="${isFav(num)}" aria-label="${isFav(num) ? 'Ukloni iz favorita' : 'Dodaj u favorite'}">${isFav(num) ? '★' : '☆'}</button></span>
