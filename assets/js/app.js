@@ -883,6 +883,7 @@ function renderSettings() {
     ${S.update && S.update.state === 'ready' ? act('upd-install', `Instaliraj verziju ${esc(S.update.name || '')}`, 'Spremna je za instalaciju')
       : S.update && S.update.state === 'downloading' ? `<div class="set-row"><div class="set-txt"><b>Preuzimam ${esc(S.update.name || '')}</b><small>${S.update.pct || 0}%</small></div></div>`
       : act('upd-check', 'Provjeri nove verzije sada', '')}
+    ${act('diag-copy', 'Kopiraj dijagnostiku', 'Zadnja upozorenja i greške aplikacije, bez lozinki, tokena i ličnih brojeva. Samo za slanje kad nešto ne radi.')}
   </div></section>`;
 }
 
@@ -913,6 +914,13 @@ function onSettingsClick(t) {
     if (a === 'pl-check') { checkPlans(); return; }
     if (a === 'login-set') { S.loginWait = true; A.plansLogin(''); return; }
     if (a === 'login-forget') { try { A.plansLogout(); } catch (e) { /* older shell */ } toast('Korisničko ime i lozinka su obrisani s telefona.'); }
+    if (a === 'diag-copy') {
+      let log = '';
+      try { log = A.readText('diag.log') || ''; } catch (e) { log = ''; }
+      const head = `@APP@ ${A.version ? A.version() : ''}\n`;
+      try { A.copyText(head + (log ? log.split('\n').slice(-120).join('\n') : '(nema zapisa)')); toast('Dijagnostika kopirana'); } catch (e) { toast('Kopiranje ne radi u ovoj verziji.'); }
+      return;
+    }
     if (a === 'mj-clear') { S.user.mj = null; saveUser(); store.remove(MJ_FILE); toast('Vijesti i zadaci su obrisani s telefona.'); }
     if (a === 'clear-clear') { S.user.clear = null; S.user.clr2 = null; saveUser(); toast('Lista je obrisana s telefona.'); }
     if (a === 'crash-clear') { try { A.clearCrash(); } catch (e) { /* ignore */ } S.crash = ''; }

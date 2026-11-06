@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage m) {
-                Log.d(TAG, m.message() + " (" + m.sourceId() + ":" + m.lineNumber() + ")");
+                Diag.console(MainActivity.this, String.valueOf(m.messageLevel()), m.message(), m.sourceId(), m.lineNumber());
                 return true;
             }
         });
@@ -253,7 +253,7 @@ public class MainActivity extends Activity {
             }
             return tmp.renameTo(f);
         } catch (IOException e) {
-            Log.w(TAG, "write " + f, e);
+            Diag.w(null, "write " + f.getName(), e);
             tmp.delete();
             return false;
         }
@@ -311,7 +311,7 @@ public class MainActivity extends Activity {
                         o.put("file", file);
                         o.put("size", dst.length());
                     } catch (Exception e) {
-                        Log.w(TAG, "import " + uri, e);
+                        Diag.w(MainActivity.this, "import " + uri, e);
                         try {
                             o.put("error", String.valueOf(e.getMessage()));
                         } catch (Exception ignored) {
@@ -1283,7 +1283,7 @@ public class MainActivity extends Activity {
                         }
                         MyjyskDaily.set(MainActivity.this, on);
                     } catch (Exception e) {
-                        Log.w(TAG, "myjysk daily", e);
+                        Diag.w(MainActivity.this, "myjysk daily", e);
                     }
                 }
             });
@@ -1352,7 +1352,7 @@ public class MainActivity extends Activity {
                         startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                 Uri.parse("package:" + getPackageName())));
                     } catch (Exception e) {
-                        Log.w(TAG, "settings", e);
+                        Diag.w(MainActivity.this, "settings", e);
                     }
                 }
             });
