@@ -1,7 +1,7 @@
 {
- "code": 66,
- "name": "1.64",
- "notes": "SM i DM: nova kartica Vrt sa svim SM/DM vrijednostima vrtnog asortimana (namještaj, jastuci, suncobrani…) i dugme da se sve stavi na 0",
+ "code": 67,
+ "name": "1.65",
+ "notes": "SM i DM: setovi (npr. S371203 stol + 4 stolice) se sada mogu staviti na 0",
  "size": 2024484,
- "sha256": "8f2433e749a30a825cee6ed12a7d4e91c636fa5c232ad5ae16d7bcde3c9de2e2"
+ "sha256": "48cc30e3fd53a8824a426ded6ea87982879d20ecd3bedebe5e07bebe2cbb712b"
 }
