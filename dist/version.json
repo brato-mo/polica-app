@@ -1,7 +1,7 @@
 {
- "code": 67,
- "name": "1.65",
- "notes": "SM i DM: setovi (npr. S371203 stol + 4 stolice) se sada mogu staviti na 0",
- "size": 2024484,
- "sha256": "48cc30e3fd53a8824a426ded6ea87982879d20ecd3bedebe5e07bebe2cbb712b"
+ "code": 68,
+ "name": "1.66",
+ "notes": "Uskoro status 21: artikli koje StoreFront najavljuje za 21/81, po datumu (moj odjel ili drugi odjel), SM/DM na 0 jednim klikom",
+ "size": 2028580,
+ "sha256": "3fea52492e7c3a662aa637fa9fd0b62885f73a6c58377302c9b32f232e00f047"
 }
