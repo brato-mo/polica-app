@@ -1353,3 +1353,4 @@ body.is-sandbox::after { content: 'TEST · ništa se ne šalje'; position: fixed
 .soon-grp summary { font-weight: 800; cursor: pointer; }
 .soon-grp .chips { margin-top: 10px; }
 #soon .seg { margin: 0 0 12px; }
+.soon-near { margin-top: 8px; }

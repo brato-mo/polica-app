@@ -2387,7 +2387,7 @@ function loadSoon() {
 }
 
 /** Puts SM (and, if asked, DM) to 0 for these articles, after the employee confirmed. */
-async function soonZero(nums) {
+async function soonZero(nums, prefer = 'sm') {
   const s = soonSrc();
   const xs = ((s && s.list) || []).filter((x) => nums.includes(x.num) && soonHas(x));
   if (!xs.length || S.soon.busy) return;
@@ -2396,25 +2396,35 @@ async function soonZero(nums) {
   const how = await ask(one ? `${one.num}: SM na 0?` : `${xs.length} artikala: SM na 0?`,
     `${one ? `<p>${esc(one.name)}</p><p>Prelazi u status ${esc(one.fut)} ${soonDmy(one.from)}. Sada SM ${whole(one.sm)}, DM ${whole(one.dm)}.</p>` : `<p>SM ima ${sm}, DM ima ${dm} ${plural(dm, 'artikal', 'artikla', 'artikala')}.</p>`}
      <p>SM na 0: SAO ih više ne naručuje za dodatno izlaganje. DM ostavi dok su izloženi; skini ga kad uklonješ izložene komade (vraćaju se u online zalihu).</p><p>Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
-    [{ label: 'SM na 0', kind: 'btn-primary', value: 'sm' }, ...(dm ? [{ label: 'SM i DM na 0', value: 'both' }] : []), { label: 'Odustani', value: '' }]);
+    prefer === 'both' && dm
+      ? [{ label: 'SM i DM na 0', kind: 'btn-primary', value: 'both' }, ...(sm ? [{ label: 'Samo SM na 0', value: 'sm' }] : []), { label: 'Odustani', value: '' }]
+      : [{ label: 'SM na 0', kind: 'btn-primary', value: 'sm' }, ...(dm ? [{ label: 'SM i DM na 0', value: 'both' }] : []), { label: 'Odustani', value: '' }]);
   if (!how) return;
-  const items = xs.filter((x) => x.sm > 0 || how === 'both').slice(0, 300).map((x) => ({ num: x.num, sm: 0, dm: how === 'both' ? 0 : x.dm }));
-  if (!items.length) { toast('Ovi artikli nemaju SM.'); return; }
-  const ok = stCall({ mode: 'smset', items }, (r) => {
-    S.soon.busy = '';
-    if (r.how === 'ok' && r.res) {
-      const done = new Set(r.res.done || []);
-      for (const x of s.list) if (done.has(x.num)) { const it = items.find((y) => y.num === x.num); x.sm = 0; x.dm = it.dm; }
-      saveUser();
-      const bad = (r.res.failed || []).length;
-      toast(`Spremljeno: ${done.size} ${plural(done.size, 'artikal', 'artikla', 'artikala')}${bad ? `, nije prošlo ${bad}` : ''}.`);
-    } else toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'StoreFront nije odgovorio do kraja. Osvježi listu da vidiš šta je spremljeno.');
-    renderSoonBar();
-    if (top().id === 'soon') renderSoon();
-  });
-  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
-  S.soon.busy = 'send';
-  renderSoon();
+  const all = xs.filter((x) => x.sm > 0 || how === 'both').map((x) => ({ num: x.num, sm: 0, dm: how === 'both' ? 0 : x.dm }));
+  if (!all.length) { toast('Ovi artikli nemaju SM.'); return; }
+  // StoreFront takes at most 300 in one job: the rest goes in the next one, one after the other
+  let saved = 0, bad = 0;
+  const send = (i) => {
+    const items = all.slice(i, i + 300);
+    const ok = stCall({ mode: 'smset', items }, (r) => {
+      if (r.how === 'ok' && r.res) {
+        const done = new Set(r.res.done || []);
+        for (const x of s.list) if (done.has(x.num)) { const it = items.find((y) => y.num === x.num); x.sm = 0; x.dm = it.dm; }
+        saveUser();
+        saved += done.size;
+        bad += (r.res.failed || []).length;
+        if (i + 300 < all.length) { send(i + 300); return; }
+        toast(`Spremljeno: ${saved} ${plural(saved, 'artikal', 'artikla', 'artikala')}${bad ? `, nije prošlo ${bad}` : ''}.`);
+      } else toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'StoreFront nije odgovorio do kraja. Osvježi listu da vidiš šta je spremljeno.');
+      S.soon.busy = '';
+      renderSoonBar();
+      if (top().id === 'soon') renderSoon();
+    });
+    if (!ok) { S.soon.busy = ''; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderSoon(); return; }
+    S.soon.busy = 'send';
+    renderSoon();
+  };
+  send(0);
 }
 
 function soonPicker() {
@@ -2477,7 +2487,8 @@ function renderSoon() {
     ${busy}
     <p class="count-line">${all.length ? `${all.length} ${plural(all.length, 'artikal najavljen', 'artikla najavljena', 'artikala najavljeno')} · ${withSm.length} sa SM/DM` : 'Nijedan artikal nema najavljen status 21 ni 81.'} · pregledano ${whole(s.asked)} · ${esc(ageText(s.at))}</p>
     ${all.length ? `<div class="chips soon-filter"><button class="chip" type="button" data-soon="only" aria-pressed="${S.soon.onlySm}" ${dis}>Samo sa SM/DM</button></div>` : ''}
-    ${near.length ? `<button class="btn btn-primary btn-block" type="button" data-soon="zero-near" ${dis}>SM/DM na 0 · narednih 60 dana (${near.length})</button>` : ''}
+    ${withSm.length ? `<button class="btn btn-primary btn-block" type="button" data-soon="zero-all" ${dis}>SM i DM na 0 · svi najavljeni (${withSm.length})</button>` : ''}
+    ${near.length && near.length < withSm.length ? `<button class="btn btn-soft btn-block soon-near" type="button" data-soon="zero-near" ${dis}>Samo narednih 60 dana (${near.length})</button>` : ''}
     ${days.map((d) => { const n = soonDays(d.from); return `<h3 class="soon-date${n <= 60 ? ' is-near' : ''}">${soonDmy(d.from)} <small>${when(n)} · ${d.xs.length}</small></h3><div class="soon-list">${d.xs.map((x) => soonRow(x, !dept)).join('')}</div>`; }).join('')}`;
 }
 
@@ -2496,6 +2507,7 @@ function onSoonClick(t) {
   else if (a === 'pick') { S.soon.pick = true; renderSoon(); }
   else if (a === 'load') loadSoon();
   else if (a === 'only') { S.soon.onlySm = !S.soon.onlySm; renderSoon(); }
+  else if (a === 'zero-all') { const s = soonSrc(); soonZero(((s && s.list) || []).filter((x) => soonHas(x) && soonDays(x.from) >= -1).map((x) => x.num), 'both'); }
   else if (a === 'zero-near') { const s = soonSrc(); soonZero(((s && s.list) || []).filter((x) => soonHas(x) && soonDays(x.from) <= 60 && soonDays(x.from) >= -1).map((x) => x.num)); }
 }
 

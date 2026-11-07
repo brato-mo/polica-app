@@ -68,6 +68,14 @@ await step('SM to 0 for the next 60 days, DM kept', async () => {
   const j = await page.evaluate(() => window.__jobs.filter((x) => x.mode === 'smset').pop());
   if (!j || j.items.length !== 1 || j.items[0].num !== '4912893' || j.items[0].sm !== 0) throw new Error(JSON.stringify(j));
 });
+await step('SM and DM to 0 for every announced article (any date), with one confirmation', async () => {
+  await page.click('[data-soon="zero-all"]'); await page.waitForTimeout(300);
+  await page.getByRole('button', { name: 'SM i DM na 0', exact: true }).click();
+  await page.waitForTimeout(300);
+  const j = await page.evaluate(() => window.__jobs.filter((x) => x.mode === 'smset').pop());
+  if (!j || j.items.length !== 1 || j.items[0].num !== '4912966' || j.items[0].sm !== 0 || j.items[0].dm !== 0) throw new Error(JSON.stringify(j));
+  if (await page.locator('[data-soon="zero-all"]').count()) throw new Error('button still there with nothing left');
+});
 await step('other department: pick Trpezarija', async () => {
   await page.click('[data-soon-scope="grp"]'); await page.click('[data-soon="hier"]');
   await page.waitForSelector('.soon-grp'); await page.click('.soon-grp summary'); await page.click('[data-soon-grp="406"]');
