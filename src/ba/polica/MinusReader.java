@@ -36,7 +36,7 @@ final class MinusReader {
         try {
             run0(ctx, parent, cb);
         } catch (Throwable e) {
-            cb.done("error", null);
+            cb.done("error", null, null);
         }
     }
 
