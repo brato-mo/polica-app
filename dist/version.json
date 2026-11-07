@@ -1,7 +1,7 @@
 {
- "code": 68,
- "name": "1.66",
- "notes": "Uskoro status 21: artikli koje StoreFront najavljuje za 21/81, po datumu (moj odjel ili drugi odjel), SM/DM na 0 jednim klikom",
+ "code": 69,
+ "name": "1.67",
+ "notes": "Uskoro 21: jedno dugme za SM i DM na 0 za sve najavljene artikle. Minus lista: pouzdanije čitanje zamjena, Regulacija se ne gubi poslije prekida",
  "size": 2028580,
- "sha256": "3fea52492e7c3a662aa637fa9fd0b62885f73a6c58377302c9b32f232e00f047"
+ "sha256": "9569826f815a3f937b4b2e6f2bb29cb4578f3d68c44e51dd5bfafe405d9fe54e"
 }
