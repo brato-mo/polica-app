@@ -86,3 +86,10 @@ test('evidence lists every movement as it is, near misses marked as not exact', 
   assert.equal(e.lines[0].stillMinus, 0);
   assert.equal(e.lines[1].stillMinus, null);
 });
+
+test('checked "it went through" after a stop at Minus lista: Regulacija is named as still to do', () => {
+  const d = describe(op({ state: 'unknown', step: 'minus', resolved: { how: 'done' } }));
+  assert.equal(d.lock, false);
+  assert.match(d.text, /Regulacija zalihe još nije poslana/);
+  assert.doesNotMatch(describe(op({ state: 'unknown', step: 'adjust', resolved: { how: 'done' } })).text, /još nije poslana/);
+});

@@ -25,7 +25,8 @@ import java.io.InputStream;
  */
 final class MinusReader {
     interface Callback {
-        void done(String how, JSONArray items);
+        /** meta: total = lines on StoreFront's list, other = numbers that are not 7 digits (not shown), or null. */
+        void done(String how, JSONArray items, JSONObject meta);
     }
 
     private MinusReader() {
@@ -89,10 +90,10 @@ final class MinusReader {
             @Override
             public void run() {
                 if (over[0]) return;
-                if (System.currentTimeMillis() - t0 > 60000) {
+                if (System.currentTimeMillis() - t0 > 90000) {
                     String u = w.getUrl();
                     boolean away = u != null && !host.equals(Uri.parse(u).getHost());
-                    finish(away ? "login" : "error", null);
+                    finish(away ? "login" : "error", null, null);
                     return;
                 }
                 String u = w.getUrl();
@@ -117,8 +118,8 @@ final class MinusReader {
                                     if (!(b instanceof JSONObject)) return;
                                     JSONObject o = (JSONObject) b;
                                     String state = o.optString("state");
-                                    if ("ok".equals(state)) finish("ok", clean(o.optJSONArray("items")));
-                                    else if ("login".equals(state) || "error".equals(state)) finish(state, null);
+                                    if ("ok".equals(state)) finish("ok", clean(o.optJSONArray("items")), meta(o));
+                                    else if ("login".equals(state) || "error".equals(state)) finish(state, null, null);
                                 } catch (Exception ignored) {
                                 }
                             }
@@ -128,7 +129,7 @@ final class MinusReader {
                 ui.postDelayed(tick[0], 700);
             }
 
-            private void finish(String how, JSONArray items) {
+            private void finish(String how, JSONArray items, JSONObject meta) {
                 if (over[0]) return;
                 over[0] = true;
                 try {
@@ -137,7 +138,7 @@ final class MinusReader {
                 } catch (Exception ignored) {
                 }
                 CookieManager.getInstance().flush();
-                cb.done(how, items);
+                cb.done(how, items, meta);
             }
         };
         ui.postDelayed(tick[0], 1500);
@@ -149,6 +150,21 @@ final class MinusReader {
     }
 
     /** Only the shape the app needs, from untrusted page data. */
+    private static JSONObject meta(JSONObject o) {
+        JSONObject m = new JSONObject();
+        try {
+            m.put("total", Math.max(0, Math.min(100000, o.optInt("total", 0))));
+            JSONArray other = new JSONArray(), in = o.optJSONArray("other");
+            for (int i = 0; in != null && i < in.length() && i < 20; i++) {
+                String n = in.optString(i);
+                if (n.matches("[0-9A-Za-z]{1,10}")) other.put(n);
+            }
+            m.put("other", other);
+        } catch (Exception ignored) {
+        }
+        return m;
+    }
+
     private static JSONArray clean(JSONArray in) {
         JSONArray out = new JSONArray();
         if (in == null) return out;
@@ -176,6 +192,7 @@ final class MinusReader {
                     subs.put(z);
                 }
                 c.put("subs", subs);
+                if (r.optBoolean("subsErr")) c.put("subsErr", true); // the replacements could not be read
                 out.put(c);
             } catch (Exception ignored) {
             }

@@ -13,7 +13,7 @@
       return r.json();
     });
   }
-  var store = '', catalog = '';
+  var store = '', catalog = '', total = 0, other = [];
   // the article's substitution chain with the store's stock of each number: what the Minus lista page shows as
   // "Zaliha zamjenskih artikala"
   function chain(num) {
@@ -25,7 +25,20 @@
           var stock = c.smDmData && typeof c.smDmData.stock === 'number' ? c.smDmData.stock : c.atp && typeof c.atp.quantity === 'number' ? c.atp.quantity : 0;
           return { num: s(c.articleNumber, 10), st: s(c.statusCode, 3), stock: stock };
         }).filter(function (c) { return /^\d{7}$/.test(c.num) && c.num !== num; }).slice(0, 12);
-      }).catch(function (e) { if (e === 'login') throw e; return []; });
+      }).catch(function (e) { if (e === 'login') throw e; return null; }); // null: not read (not "no replacement")
+  }
+  // a few at a time: hundreds of requests at once make StoreFront drop some, and a dropped one must not look like
+  // "no replacement"
+  function pool(list, n, fn) {
+    var i = 0;
+    function next() {
+      if (i >= list.length) return Promise.resolve();
+      var x = list[i++];
+      return fn(x).then(next);
+    }
+    var w = [];
+    for (var k = 0; k < Math.min(n, list.length); k++) w.push(next());
+    return Promise.all(w);
   }
   get('/api/v1/websapapi/user-details').then(function (u) {
     var si = u && u.userDetails && u.userDetails.storeInfo;
@@ -36,6 +49,7 @@
     return get('/api/v1/minus-list/' + encodeURIComponent(store) + '?include=Article');
   }).then(function (list) {
     if (!Array.isArray(list)) throw 'shape';
+    total = list.length;
     var items = list.slice(0, 300).map(function (x) {
       var a = x.article || {};
       return {
@@ -48,12 +62,18 @@
         group: s(a.groupTitle, 60),
         subs: [],
       };
-    }).filter(function (x) { return /^\d{7}$/.test(x.num); });
-    return Promise.all(items.map(function (x) {
-      return chain(x.num).then(function (c) { x.subs = c; return x; });
-    }));
+    });
+    other = items.filter(function (x) { return !/^\d{7}$/.test(x.num); }).map(function (x) { return x.num; }).slice(0, 20);
+    items = items.filter(function (x) { return /^\d{7}$/.test(x.num); });
+    // twice for the ones StoreFront did not answer the first time
+    return pool(items, 6, function (x) { return chain(x.num).then(function (c) { x.subs = c; }); }).then(function () {
+      return pool(items.filter(function (x) { return x.subs === null; }), 3, function (x) { return chain(x.num).then(function (c) { x.subs = c; }); });
+    }).then(function () {
+      items.forEach(function (x) { if (x.subs === null) { x.subs = []; x.subsErr = true; } });
+      return items;
+    });
   }).then(function (items) {
-    window.__ml = { state: 'ok', items: items };
+    window.__ml = { state: 'ok', items: items, total: total, other: other };
   }).catch(function (e) {
     window.__ml = { state: e === 'login' ? 'login' : 'error', why: s(e, 60) };
   });
