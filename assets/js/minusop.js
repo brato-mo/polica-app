@@ -46,7 +46,9 @@ export function describe(op) {
     case 'unknown': {
       if (op.resolved) {
         return { ...base, lock: false, tone: op.resolved.how === 'done' ? 'ok' : 'warn',
-          text: op.resolved.how === 'done' ? 'Provjereno u StoreFrontu: prošlo je.' : 'Provjereno u StoreFrontu: nije prošlo. Možeš poslati ponovo.' };
+          text: op.resolved.how === 'done'
+            ? (op.step === 'minus' && !adjustOnly ? 'Provjereno u StoreFrontu: Minus lista je prošla. Regulacija zalihe još nije poslana, čeka u „Čeka Regulaciju“.' : 'Provjereno u StoreFrontu: prošlo je.')
+            : 'Provjereno u StoreFrontu: nije prošlo. Možeš poslati ponovo.' };
       }
       const what = op.step === 'adjust'
         ? (adjustOnly ? 'Regulacija zalihe je poslana, ali odgovor nije stigao.' : 'Minus lista je prihvaćena. Regulacija zalihe je poslana, ali odgovor nije stigao.')

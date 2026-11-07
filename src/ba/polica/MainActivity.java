@@ -521,13 +521,14 @@ public class MainActivity extends Activity {
         minusReading = true;
         MinusReader.run(this, (android.view.ViewGroup) getWindow().getDecorView(), new MinusReader.Callback() {
             @Override
-            public void done(String how, org.json.JSONArray items) {
+            public void done(String how, org.json.JSONArray items, JSONObject meta) {
                 minusReading = false;
                 JSONObject o = new JSONObject();
                 try {
                     o.put("how", how);
                     o.put("at", System.currentTimeMillis());
                     o.put("items", items == null ? new org.json.JSONArray() : items);
+                    if (meta != null) o.put("meta", meta);
                 } catch (Exception ignored) {
                 }
                 runJs("window.onMinus&&onMinus(" + o + ")");

@@ -1478,8 +1478,11 @@ function minusOpCard() {
       <button class="btn btn-block" type="button" data-op-check ${ev && ev.busy ? 'disabled' : ''}>Provjeri u StoreFrontu (samo čitanje)</button>
       <div class="mp-head"><button class="text-btn" type="button" data-sf-page="minus">Otvori Minus listu</button><button class="text-btn" type="button" data-sf-page="adjust">Otvori Regulaciju</button></div>
       <p class="att-from">Kad provjeriš u StoreFrontu, reci šta si našao. Tek tada se može slati ponovo.</p>
-      <button class="btn btn-block" type="button" data-op-resolve="done">Provjerio sam: prošlo je</button>
-      <button class="btn btn-block" type="button" data-op-resolve="notdone">Provjerio sam: nije prošlo</button>`;
+      ${op.kind !== 'adjust' && op.step === 'minus'
+    ? `<button class="btn btn-block" type="button" data-op-resolve="done">Provjerio sam: Minus lista je prošla</button>
+      <button class="btn btn-block" type="button" data-op-resolve="notdone">Provjerio sam: Minus lista nije prošla</button>`
+    : `<button class="btn btn-block" type="button" data-op-resolve="done">Provjerio sam: prošlo je</button>
+      <button class="btn btn-block" type="button" data-op-resolve="notdone">Provjerio sam: nije prošlo</button>`}`;
   }
   return `<section class="mj-sec mp op-card op-${d.tone}" aria-live="polite"><div class="sec-head"><h2>${esc(d.label)}</h2><small>${esc(when)}</small></div>
     <p class="att-from">${esc(d.text)}</p>${more}</section>`;
@@ -1520,7 +1523,14 @@ function minusOpResolve(how) {
   if (!rec) { toast('Nije zapisano. Pokušaj ponovo.'); return; }
   S.minusOp = rec;
   const items = rec.items || [];
-  if (how === 'done') {
+  const minusOnly = rec.kind !== 'adjust' && rec.step === 'minus';
+  if (how === 'done' && minusOnly) {
+    // it stopped at Minus lista: that went through, Regulacija zalihe was never sent and still has to be done
+    const d = S.user.minusDone || (S.user.minusDone = {});
+    for (const x of items) d[`${x.num}|${x.qty}|1`] = Date.now();
+    const have = new Set((S.user.minusPending || []).map((p) => p.num));
+    S.user.minusPending = [...(S.user.minusPending || []), ...items.filter((x) => x.target && !have.has(x.num))];
+  } else if (how === 'done') {
     const d = S.user.minusDone || (S.user.minusDone = {});
     for (const x of items) {
       if (rec.kind !== 'adjust') d[`${x.num}|${x.qty}|1`] = Date.now();
@@ -1536,7 +1546,7 @@ function minusOpResolve(how) {
     S.user.minusPending = [...(S.user.minusPending || []), ...items.filter((x) => !have.has(x.num))];
   }
   saveUser();
-  toast(how === 'done' ? 'Zapisano: prošlo je.' : 'Zapisano: nije prošlo. Slanje je ponovo moguće.');
+  toast(how === 'done' ? (minusOnly ? 'Zapisano: Minus lista je prošla. Regulacija zalihe čeka u „Čeka Regulaciju“.' : 'Zapisano: prošlo je.') : 'Zapisano: nije prošlo. Slanje je ponovo moguće.');
   S.minusCheck = null;
   renderMinus();
   setTimeout(loadMinus, 500);
@@ -1559,7 +1569,7 @@ window.onMinus = (r) => {
   S.minusBusy = false;
   if (!r) return;
   if (r.how === 'ok') {
-    S.user.minus = { at: r.at || Date.now(), items: r.items || [] };
+    S.user.minus = { at: r.at || Date.now(), items: r.items || [], total: r.meta && r.meta.total || 0, other: (r.meta && r.meta.other) || [] };
     const live = new Set((r.items || []).map((x) => `${x.num}|${x.qty}|`));
     const d = S.user.minusDone || {};
     for (const k of Object.keys(d)) if (!live.has(k.replace(/[12]$/, ''))) delete d[k];
@@ -1587,6 +1597,8 @@ const mq = (n) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ',')
 function minusTargets(items) {
   const picks = S.user.minusPick || {};
   const used = {};
+  // goods already promised to a Regulacija that is still waiting: that stock is not free for a new line
+  for (const p of S.user.minusPending || []) if (p && p.target) used[p.target] = (used[p.target] || 0) + Math.abs(+p.qty || 0);
   const out = new Map();
   const order = items.slice().sort((a, b) => (picks[b.num] ? 1 : 0) - (picks[a.num] ? 1 : 0) || a.qty - b.qty);
   for (const x of order) {
@@ -1625,7 +1637,7 @@ function minusRow(x) {
   const sub = ch.length
     ? `<span class="pills">${t ? `<span class="pill pill-order">Roba pod šifrom ${esc(t.num)} (${esc(mq(t.stock))} kom)</span>` : ''}</span>
        <span class="store-line">Zaliha zamjenskih: ${ch.map((c) => `${esc(c.num)}${c.st ? ` (${esc(c.st)})` : ''}${typeof c.stock === 'number' ? ` ${esc(mq(c.stock))}` : ''}`).join(' · ')}</span>`
-    : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
+    : x.subsErr ? '<span class="pills"><span class="pill pill-muted">Zamjene nisu pročitane</span></span>' : '<span class="pills"><span class="pill pill-muted">Nema zamjene</span></span>';
   const line = `<span class="store-line minus-qty">${qty}${x.st ? ` · status ${esc(x.st)}` : ''}${x.blocked ? ` · blokirano ${esc(mq(x.blocked))}` : ''}</span>`;
   if (S.index.byNum.has(x.num)) return itemRow(x.num, { sub: `${sub}${line}` });
   return `<div class="item item-static">${sfThumb(x.num)}<span class="item-main">
@@ -1841,11 +1853,19 @@ function renderMinus() {
   minusOpNow();
   const ready = items.filter((x) => minusTarget(x));
   const decide = items.filter((x) => chainOf(x).length && !minusTarget(x));
-  const noSub = items.filter((x) => !chainOf(x).length);
+  const unread = items.filter((x) => !chainOf(x).length && x.subsErr);
+  const noSub = items.filter((x) => !chainOf(x).length && !x.subsErr);
+  const hidden = (m.other || []).length;
+  const cut = m.total > 300 ? m.total - 300 : 0;
   box.innerHTML = `${busy}<p class="count-line">${items.length} ${plural(items.length, 'artikal', 'artikla', 'artikala')} u minusu · stanje ${esc(ageText(m.at))}</p>
     ${sandboxOn() ? `<p class="sandbox-note">TEST verzija: slanje se samo odigra (${esc((SIMS.find((x) => x[0] === simNow()) || SIMS[0])[1])}). Ništa ne ide u StoreFront. Promjena: Postavke → TEST.</p>` : ''}
+    ${cut ? `<p class="att-from op-warnline">StoreFront ima ${m.total} redova na Minus listi, ovdje je prvih 300. Ostale pogledaj u StoreFrontu.</p>` : ''}
+    ${hidden ? `<p class="att-from">Nije prikazano ${hidden} (šifre koje nisu od 7 cifara, npr. setovi): ${esc(m.other.join(', '))}. Njih uradi u StoreFrontu.</p>` : ''}
     ${minusOpCard()}
     ${minusPlan(items)}
+    ${unread.length ? `<section class="mj-sec"><div class="sec-head"><h2>Zamjene nisu pročitane</h2><small>${unread.length}</small></div>
+      <p class="att-from op-warnline">StoreFront nije odgovorio za zamjenske šifre ovih artikala. To ne znači da zamjene nema. Osvježi listu.</p>
+      <div class="list">${unread.map(minusRow).join('')}</div></section>` : ''}
     ${decide.length ? `<section class="mj-sec"><div class="sec-head"><h2>Treba tvoja odluka</h2><small>${decide.length}</small></div>
       <div class="mp-step">${decide.map(minusDecideRow).join('')}</div></section>` : ''}
     ${ready.length ? `<section class="mj-sec"><div class="sec-head"><h2>Spremno za ispravku</h2><small>${ready.length}</small></div>
