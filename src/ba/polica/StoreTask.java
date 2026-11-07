@@ -36,6 +36,7 @@ final class StoreTask {
     }
 
     private static final long TIMEOUT_MS = 120000; // the best sellers of a whole department take StoreFront ~40 s
+    private static final long LONG_MS = 420000; // "soon" reads every article of a group one by one (~10 a second)
     private static final long AWAY_MS = 12000; // this long on a sign-in page: the employee has to sign in
 
     private StoreTask() {
@@ -253,7 +254,7 @@ final class StoreTask {
             public void run() {
                 if (over[0]) return;
                 long now = System.currentTimeMillis();
-                if (now - t0 > TIMEOUT_MS) {
+                if (now - t0 > ("soon".equals(mode) ? LONG_MS : TIMEOUT_MS)) {
                     JSONObject x = new JSONObject();
                     try {
                         x.put("err", "timeout");

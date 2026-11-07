@@ -10,6 +10,8 @@
 //   { mode: 'opcheck', items, since }  read only: stock history and Minus lista after a sending with unknown outcome
 //   { mode: 'eans', nums }  read only: the barcodes of these articles (at most 400)
 //   { mode: 'pics', nums }  read only: the picture addresses of these articles (at most 40)
+//   { mode: 'hier' }  read only: StoreFront's product groups (two levels), to choose another department
+//   { mode: 'soon', nums | cats }  read only: articles that StoreFront says will go to 21 / 81, with the date
 // Only 'smset' changes anything. The result is left in window.__st for the app to pick up.
 (function () {
   if (window.__st && window.__st.state === 'busy') return;
@@ -369,7 +371,63 @@
     }).then(function (l) { return { list: l.filter(Boolean) }; });
   }
 
-  var run = { me: me, pics: pics, eans: eans, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear }[arg.mode];
+  // read only: StoreFront's product groups, two levels (e.g. 4 Namještaj > its subgroups), to choose a department
+  function hier() {
+    return get('/api/v1/catalog/product-hierarchy-groups?catalogId=' + encodeURIComponent(catalog)).then(function (j) {
+      var ok = function (g) { return g && /^\d{1,8}$/.test(s(g.groupId, 8)) && s(g.title, 60); };
+      return { groups: (Array.isArray(j) ? j : []).filter(ok).slice(0, 40).map(function (g) {
+        return { id: s(g.groupId, 8), title: s(g.title, 60), subs: (Array.isArray(g.subGroups) ? g.subGroups : []).filter(ok).slice(0, 60).map(function (x) { return { id: s(x.groupId, 8), title: s(x.title, 60) }; }) };
+      }) };
+    });
+  }
+
+  // Read only. Articles whose coming status change StoreFront already knows (futurestatusCode with the date it is
+  // valid from): those that go to 21 (discontinued) or 81. Either these article numbers (the employee's planogram)
+  // or every article of these product groups that is not 21/81 yet. Sorted by the date, the soonest first.
+  function soon() {
+    var nums = (Array.isArray(arg.nums) ? arg.nums : []).map(function (n) { return s(n, 10); }).filter(function (n) { return /^\d{7}$/.test(n); });
+    var first;
+    if (nums.length) first = Promise.resolve(nums);
+    else {
+      if (!cats.length) throw 'bad input';
+      var out = [];
+      var page = function (start) {
+        return req('POST', '/api/v1/article/search?include=SmDm', { storeId: store, catalogId: catalog, categories: cats, statusCodes: ['01', '02', '11', '12', '31', '32', '41', '42', '51'], start: String(start), max: '500' }).then(function (j) {
+          var l = (j && j.articleResults) || [];
+          l.forEach(function (a) { var n = s(a.id, 10); if (/^\d{7}$/.test(n)) out.push(n); });
+          var total = j && j.pagingInfo ? num(j.pagingInfo.total) : 0;
+          if (l.length && start + l.length < total && out.length < 2500) return page(start + l.length);
+          return out;
+        });
+      };
+      first = page(0);
+    }
+    var found = [], asked = 0;
+    return first.then(function (list) {
+      var seen = {};
+      list = list.filter(function (n) { if (seen[n]) return false; seen[n] = 1; return true; }).slice(0, 2500);
+      asked = list.length;
+      window.__st.prog = '0/' + asked;
+      return inBatches(list, 8, function (n) {
+        return get('/api/v1/article/masterdata?article=' + n + '&catalog=' + encodeURIComponent(catalog) + '&store=' + encodeURIComponent(store) + '&include=SmDm').then(function (j) {
+          var m = Array.isArray(j) ? j[0] : j;
+          if (!m) return;
+          var fut = s(m.futurestatusCode, 3), st = s(m.statusCode, 3), from = +m.futurestatusCodeValidFrom;
+          // a date of the year 9999 means "no date"; an article already in that status is not news
+          if ((fut !== '21' && fut !== '81') || st === fut || !isFinite(from) || from <= 0 || from > 4102444800000) return;
+          var d = m.smDmData || {};
+          found.push({ num: n, name: s(m.title || d.title, 120), st: st, fut: fut, from: new Date(from).toISOString().slice(0, 10),
+            sm: num(d.smQuantity), dm: num(d.dmQuantity), stock: num(d.stock), sold30: num(d.quantitySoldInPeriod), cap: num(d.shelfCapacity),
+            price: num(m.activeSalesPrice), unit: s(m.unit || d.unit, 6), group: s(m.groupId, 8), groupName: s(m.groupTitle, 60) });
+        });
+      });
+    }).then(function () {
+      found.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : a.num < b.num ? -1 : 1; });
+      return { list: found.slice(0, 1500), asked: asked };
+    });
+  }
+
+  var run = { me: me, pics: pics, eans: eans, opcheck: opcheck, find: find, article: article, top: top, smdm: smdm, smset: smset, audit: audit, groups: groups, clear: clear, hier: hier, soon: soon }[arg.mode];
   (run ? who().then(run) : Promise.reject('bad mode')).then(function (res) {
     window.__st = { state: 'ok', job: job, res: res };
   }, function (e) {

@@ -1336,3 +1336,20 @@ body.is-sandbox::after { content: 'TEST · ništa se ne šalje'; position: fixed
 .op-warnline { font-weight: 600; }
 .mp-pending > .btn:not(.mp-apply) { margin: 6px 14px; width: calc(100% - 28px); }
 .mp-pending > .att-from, .mp-pending > .count-line { margin-left: 14px; margin-right: 14px; }
+
+/* Uskoro 21 */
+.soon-date { display: flex; align-items: baseline; gap: 8px; margin: 18px 2px 8px; font-size: 16px; font-weight: 800; }
+.soon-date small { color: var(--ink-2); font-size: 13px; font-weight: 700; }
+.soon-date.is-near { color: var(--danger); }
+.soon-list { display: flex; flex-direction: column; gap: 8px; }
+.soon-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-1); }
+.soon-row.is-due { box-shadow: var(--shadow-1), inset 3px 0 0 var(--danger); }
+.soon-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; }
+.soon-main .code { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.soon-zero { flex: none; min-height: 40px; padding: 0 12px; }
+.soon-filter { margin: 0 0 10px; }
+.soon-filter .chip[aria-pressed="true"], .soon-grp .chip.is-read { border-color: var(--primary); color: var(--ink); }
+.soon-grp { margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-1); }
+.soon-grp summary { font-weight: 800; cursor: pointer; }
+.soon-grp .chips { margin-top: 10px; }
+#soon .seg { margin: 0 0 12px; }

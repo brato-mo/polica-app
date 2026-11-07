@@ -391,6 +391,7 @@ function back() {
   if (t.id === 'ar') renderAr();
   if (t.id === 'top') renderTop();
   if (t.id === 'smdm') renderSm();
+  if (t.id === 'soon') renderSoon();
   if (t.id === 'audit') renderAudit();
   if (t.id === 'tips') renderTips();
   if (t.id === 'home') renderHome();
@@ -1404,7 +1405,7 @@ function newsRow(st, a) {
 
 // ------------------------------------------------------------------ Minus lista (StoreFront, only read)
 
-function renderStoreBars() { renderTipsBar(); renderTopBar(); renderSmBar(); }
+function renderStoreBars() { renderTipsBar(); renderTopBar(); renderSmBar(); renderSoonBar(); }
 
 function renderMinusBar() {
   const b = $('#minusBar');
@@ -2303,6 +2304,201 @@ function renderTop() {
     ${rows.length ? `<div class="list">${rows.join('')}</div>` : '<p class="empty">Ništa prodano u tom periodu.</p>'}`;
 }
 
+// ------------------------------------------------ Uskoro 21: articles StoreFront already says will be discontinued
+
+// StoreFront keeps the coming status of an article and the date it is valid from (futurestatusCode). This screen
+// reads it: first for the employee's own planogram (his department, the priority), or for any other product group
+// he picks (e.g. Namještaj > Kancelarija). Sorted by the date, the soonest first, so the SM can go to 0 in time.
+S.soon = { scope: 'dept', grp: '', grpTitle: '', busy: '', onlySm: false, pick: false };
+const soonToday = () => Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+const soonDays = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - soonToday()) / 86400000);
+const soonDmy = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}.${m}.${y}`; };
+const soonHas = (x) => x.sm > 0 || x.dm > 0;
+/** The read that is shown: the department's or the chosen group's. */
+function soonSrc() {
+  const u = S.user.soon || {};
+  return S.soon.scope === 'dept' ? u.dept : (u.grp || {})[S.soon.grp];
+}
+
+function renderSoonBar() {
+  const b = $('#soonBar');
+  if (!b) return;
+  b.hidden = !S.plans.length || !A.storeTask;
+  if (b.hidden) return;
+  const d = (S.user.soon || {}).dept;
+  let small = 'Šta StoreFront najavljuje za status 21, po datumu';
+  if (d && d.list) {
+    const near = d.list.filter((x) => soonDays(x.from) <= 60);
+    const sm = near.filter(soonHas).length;
+    small = d.list.length ? `${near.length} u narednih 60 dana${sm ? ` · ${sm} još ima SM/DM` : ''} · ${esc(ageText(d.at))}` : `Ništa najavljeno · ${esc(ageText(d.at))}`;
+  }
+  b.innerHTML = `${icon('info')}<span><b>Uskoro status 21</b><small>${small}</small></span><span class="go">${d && d.list ? 'Otvori' : 'Učitaj'}</span>`;
+}
+
+function openSoon() {
+  go('soon');
+  renderSoon();
+  const s = soonSrc();
+  if (S.soon.scope === 'dept' && (!s || !s.list || Date.now() - s.at > 6 * 3600000)) loadSoon();
+}
+
+function loadHier() {
+  if (S.soon.busy) return;
+  S.soon.busy = 'hier';
+  renderSoon();
+  const ok = stCall({ mode: 'hier' }, (r) => {
+    S.soon.busy = '';
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.groups)) {
+      S.user.hier = { at: Date.now(), groups: r.res.groups.slice(0, 40).map((g) => ({ id: String(g.id), title: String(g.title || ''), subs: (g.subs || []).slice(0, 60).map((x) => ({ id: String(x.id), title: String(x.title || '') })) })) };
+      saveUser();
+    } else toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'Grupe se nisu mogle učitati. Pokušaj ponovo.');
+    if (top().id === 'soon') renderSoon();
+  });
+  if (!ok) { S.soon.busy = ''; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderSoon(); }
+}
+
+function loadSoon() {
+  if (S.soon.busy) return;
+  const dept = S.soon.scope === 'dept';
+  const nums = dept ? deptNums() : [];
+  if (dept && !nums.length) { toast('Prvo dodaj planogram svog odjela.'); return; }
+  if (!dept && !S.soon.grp) return;
+  const grp = S.soon.grp, title = S.soon.grpTitle;
+  S.soon.busy = 'load';
+  renderSoon();
+  const ok = stCall(dept ? { mode: 'soon', nums } : { mode: 'soon', cats: [grp] }, (r) => {
+    S.soon.busy = '';
+    if (r.how === 'ok' && r.res && Array.isArray(r.res.list)) {
+      const list = r.res.list.slice(0, 1500).filter((x) => /^\d{7}$/.test(x.num) && /^\d{4}-\d{2}-\d{2}$/.test(x.from)).map((x) => ({
+        num: x.num, name: String(x.name || ''), st: String(x.st || ''), fut: String(x.fut || ''), from: x.from, sm: +x.sm || 0, dm: +x.dm || 0,
+        stock: +x.stock || 0, sold30: +x.sold30 || 0, cap: +x.cap || 0, price: +x.price || 0, unit: String(x.unit || 'KOM'), groupName: String(x.groupName || ''),
+      }));
+      const rec = { at: Date.now(), asked: +r.res.asked || 0, list };
+      const u = S.user.soon || {};
+      S.user.soon = dept ? { ...u, dept: { ...rec, key: deptKey() } } : { ...u, grp: { ...(u.grp || {}), [grp]: { ...rec, title } } };
+      saveUser();
+    } else {
+      toast(r.how === 'login' ? 'StoreFront traži prijavu.' : r.err === 'timeout' ? 'StoreFront je predugo odgovarao. Izaberi manju grupu ili pokušaj ponovo.' : 'Lista se nije mogla učitati. Pokušaj ponovo.');
+    }
+    renderSoonBar();
+    if (top().id === 'soon') renderSoon();
+  });
+  if (!ok) { S.soon.busy = ''; toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); renderSoon(); }
+}
+
+/** Puts SM (and, if asked, DM) to 0 for these articles, after the employee confirmed. */
+async function soonZero(nums) {
+  const s = soonSrc();
+  const xs = ((s && s.list) || []).filter((x) => nums.includes(x.num) && soonHas(x));
+  if (!xs.length || S.soon.busy) return;
+  const one = xs.length === 1 ? xs[0] : null;
+  const sm = xs.filter((x) => x.sm > 0).length, dm = xs.filter((x) => x.dm > 0).length;
+  const how = await ask(one ? `${one.num}: SM na 0?` : `${xs.length} artikala: SM na 0?`,
+    `${one ? `<p>${esc(one.name)}</p><p>Prelazi u status ${esc(one.fut)} ${soonDmy(one.from)}. Sada SM ${whole(one.sm)}, DM ${whole(one.dm)}.</p>` : `<p>SM ima ${sm}, DM ima ${dm} ${plural(dm, 'artikal', 'artikla', 'artikala')}.</p>`}
+     <p>SM na 0: SAO ih više ne naručuje za dodatno izlaganje. DM ostavi dok su izloženi; skini ga kad uklonješ izložene komade (vraćaju se u online zalihu).</p><p>Sprema se odmah u StoreFront pod tvojom prijavom.</p>`,
+    [{ label: 'SM na 0', kind: 'btn-primary', value: 'sm' }, ...(dm ? [{ label: 'SM i DM na 0', value: 'both' }] : []), { label: 'Odustani', value: '' }]);
+  if (!how) return;
+  const items = xs.filter((x) => x.sm > 0 || how === 'both').slice(0, 300).map((x) => ({ num: x.num, sm: 0, dm: how === 'both' ? 0 : x.dm }));
+  if (!items.length) { toast('Ovi artikli nemaju SM.'); return; }
+  const ok = stCall({ mode: 'smset', items }, (r) => {
+    S.soon.busy = '';
+    if (r.how === 'ok' && r.res) {
+      const done = new Set(r.res.done || []);
+      for (const x of s.list) if (done.has(x.num)) { const it = items.find((y) => y.num === x.num); x.sm = 0; x.dm = it.dm; }
+      saveUser();
+      const bad = (r.res.failed || []).length;
+      toast(`Spremljeno: ${done.size} ${plural(done.size, 'artikal', 'artikla', 'artikala')}${bad ? `, nije prošlo ${bad}` : ''}.`);
+    } else toast(r.how === 'login' ? 'StoreFront traži prijavu.' : 'StoreFront nije odgovorio do kraja. Osvježi listu da vidiš šta je spremljeno.');
+    renderSoonBar();
+    if (top().id === 'soon') renderSoon();
+  });
+  if (!ok) { toast('Ova verzija aplikacije to ne zna. Ažuriraj je.'); return; }
+  S.soon.busy = 'send';
+  renderSoon();
+}
+
+function soonPicker() {
+  const h = S.user.hier;
+  if (!h || !h.groups) {
+    return S.soon.busy === 'hier' ? '<p class="count-line"><i class="mj-busy"></i> Čitam grupe proizvoda iz StoreFronta…</p>'
+      : `<p class="empty">Izaberi odjel iz grupa proizvoda StoreFronta (npr. Namještaj › Kancelarija).</p><button class="btn btn-primary btn-block" type="button" data-soon="hier">${icon('list')}Učitaj grupe</button>`;
+  }
+  const done = (S.user.soon || {}).grp || {};
+  const chip = (id, title, label) => `<button class="chip${done[id] ? ' is-read' : ''}" type="button" data-soon-grp="${esc(id)}" data-soon-title="${esc(title)}">${esc(label)}</button>`;
+  return `<p class="count-line">Izaberi grupu. Manja grupa se čita brže (velika, kao cijeli Namještaj, i do 5 minuta).</p>
+    ${h.groups.map((g) => `<details class="soon-grp"${String(S.soon.grp).startsWith(g.id) ? ' open' : ''}><summary>${esc(g.title)}</summary>
+      <div class="chips">${chip(g.id, g.title, `Sve: ${g.title}`)}${g.subs.map((x) => chip(x.id, `${g.title} › ${x.title}`, x.title)).join('')}</div></details>`).join('')}`;
+}
+
+function soonRow(x, other) {
+  const days = soonDays(x.from);
+  const has = soonHas(x);
+  const dis = S.soon.busy ? 'disabled' : '';
+  return `<div class="soon-row${has && days <= 60 ? ' is-due' : ''}">
+    <button class="soon-main" type="button" data-store="${esc(x.num)}">
+      <span class="code">${esc(x.num)}<span class="pill pill-muted">Status ${esc(x.st)} → ${esc(x.fut)}</span>${x.sm > 0 ? `<span class="pill pill-warn">SM ${whole(x.sm)}</span>` : ''}${x.dm > 0 ? `<span class="pill pill-warn">DM ${whole(x.dm)}</span>` : ''}</span>
+      <span class="item-name">${esc(x.name) || 'Bez naziva'}</span>
+      <span class="sm-facts">Na stanju ${whole(x.stock)} · prodano 30 dana ${whole(x.sold30)}${x.price ? ` · ${money(x.price)} KM` : ''}${other && x.groupName ? ` · ${esc(x.groupName)}` : ''}</span>
+    </button>
+    ${has ? `<button class="chip soon-zero" type="button" data-soon-zero="${esc(x.num)}" ${dis} aria-label="${x.sm > 0 ? 'SM' : 'DM'} na 0">${x.sm > 0 ? 'SM' : 'DM'} 0</button>` : ''}
+  </div>`;
+}
+
+function renderSoon() {
+  const box = $('#soonBody');
+  if (!box) return;
+  const dept = S.soon.scope === 'dept';
+  const dis = S.soon.busy ? 'disabled' : '';
+  const seg = `<div class="seg" role="tablist">${[['dept', 'Moj odjel'], ['grp', 'Drugi odjel']].map(([v, t]) => `<button class="seg-btn" type="button" role="tab" aria-selected="${S.soon.scope === v}" data-soon-scope="${v}" ${dis}>${t}</button>`).join('')}</div>`;
+  const intro = `<details class="sm-intro"><summary>Odakle je ovo?</summary>
+    <p>StoreFront za svaki artikal unaprijed čuva budući status i datum od kada vrijedi. Ovdje su artikli kojima je najavljen status <b>21</b> (ukinut) ili <b>81</b>, poredani po datumu.</p>
+    <p>SAO naručuje samo statuse 11, 12 i 41, pa nakon prelaska u 21 artikal više ne stiže. Prije toga SAO i dalje dopunjava policu i SM: spusti SM na 0 nekoliko sedmica prije datuma da ne ostane višak za rasprodaju. Smjernica: kad artikal pređe u 21, ukloni SM i DM.</p></details>`;
+  if (!dept && (S.soon.pick || !S.soon.grp)) {
+    box.innerHTML = `${seg}${intro}${soonPicker()}`;
+    return;
+  }
+  const s = soonSrc();
+  const busy = S.soon.busy === 'load' ? `<p class="count-line"><i class="mj-busy"></i> Čitam iz StoreFronta budući status svakog artikla… ${dept ? '(oko minutu)' : '(veća grupa i do 5 minuta)'}</p>`
+    : S.soon.busy === 'send' ? '<p class="count-line"><i class="mj-busy"></i> Spremam u StoreFront…</p>' : '';
+  const which = dept ? `${esc(deptName())} · artikli iz tvog planograma` : `<button class="text-btn" type="button" data-soon="pick" ${dis}>${esc(S.soon.grpTitle)} · Promijeni</button>`;
+  if (!s || !s.list) {
+    box.innerHTML = `${seg}${intro}<p class="count-line">${which}</p>${busy || `<button class="btn btn-primary btn-block" type="button" data-soon="load">${icon('refresh')}Učitaj iz StoreFronta</button>`}`;
+    return;
+  }
+  const all = s.list.filter((x) => soonDays(x.from) >= -1);
+  const list = S.soon.onlySm ? all.filter(soonHas) : all;
+  const withSm = all.filter(soonHas);
+  const near = withSm.filter((x) => soonDays(x.from) <= 60);
+  const days = [];
+  for (const x of list) { const d = days[days.length - 1]; if (d && d.from === x.from) d.xs.push(x); else days.push({ from: x.from, xs: [x] }); }
+  const when = (n) => (n <= 0 ? 'danas' : n === 1 ? 'sutra' : `za ${n} ${plural(n, 'dan', 'dana', 'dana')}`);
+  box.innerHTML = `${seg}${intro}
+    <div class="top-head"><p class="count-line">${which}</p><button class="text-btn" type="button" data-soon="load" ${dis}>${icon('refresh')}Osvježi</button></div>
+    ${busy}
+    <p class="count-line">${all.length ? `${all.length} ${plural(all.length, 'artikal najavljen', 'artikla najavljena', 'artikala najavljeno')} · ${withSm.length} sa SM/DM` : 'Nijedan artikal nema najavljen status 21 ni 81.'} · pregledano ${whole(s.asked)} · ${esc(ageText(s.at))}</p>
+    ${all.length ? `<div class="chips soon-filter"><button class="chip" type="button" data-soon="only" aria-pressed="${S.soon.onlySm}" ${dis}>Samo sa SM/DM</button></div>` : ''}
+    ${near.length ? `<button class="btn btn-primary btn-block" type="button" data-soon="zero-near" ${dis}>SM/DM na 0 · narednih 60 dana (${near.length})</button>` : ''}
+    ${days.map((d) => { const n = soonDays(d.from); return `<h3 class="soon-date${n <= 60 ? ' is-near' : ''}">${soonDmy(d.from)} <small>${when(n)} · ${d.xs.length}</small></h3><div class="soon-list">${d.xs.map((x) => soonRow(x, !dept)).join('')}</div>`; }).join('')}`;
+}
+
+function onSoonClick(t) {
+  if (t.dataset.soonScope) { if (S.soon.busy) return; S.soon.scope = t.dataset.soonScope === 'grp' ? 'grp' : 'dept'; renderSoon(); const s = soonSrc(); if (S.soon.scope === 'dept' && !(s && s.list)) loadSoon(); return; }
+  if (t.dataset.soonGrp) {
+    if (S.soon.busy) return;
+    S.soon.grp = t.dataset.soonGrp; S.soon.grpTitle = t.dataset.soonTitle || t.dataset.soonGrp; S.soon.pick = false;
+    renderSoon();
+    if (!(soonSrc() && soonSrc().list)) loadSoon();
+    return;
+  }
+  if (t.dataset.soonZero) { soonZero([t.dataset.soonZero]); return; }
+  const a = t.dataset.soon;
+  if (a === 'hier') loadHier();
+  else if (a === 'pick') { S.soon.pick = true; renderSoon(); }
+  else if (a === 'load') loadSoon();
+  else if (a === 'only') { S.soon.onlySm = !S.soon.onlySm; renderSoon(); }
+  else if (a === 'zero-near') { const s = soonSrc(); soonZero(((s && s.list) || []).filter((x) => soonHas(x) && soonDays(x.from) <= 60 && soonDays(x.from) >= -1).map((x) => x.num)); }
+}
+
 // ------------------------------------------------ SM i DM: values of the department's articles that go out (21, 81)
 
 S.sm = { busy: '', edit: {}, move: {}, st: ['21', '81'], scope: 'dept' };
@@ -3057,7 +3253,7 @@ function renderHome() {
   $('#newsWrap').hidden = !nw;
   if (nw) {
     $('#homeStats').textContent = 'Zadaci i vijesti iz MYJYSK';
-    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar', '#tipsBar', '#topBar', '#smBar']) $(id).hidden = true;
+    for (const id of ['#welcome', '#searchForm', '#homeDock', '#results', '#recentWrap', '#ordersBar', '#clearBar', '#minusBar', '#tipsBar', '#topBar', '#smBar', '#soonBar']) $(id).hidden = true;
     for (const b of $$('#modeSeg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === S.mode));
     renderNews();
     return;
@@ -4523,7 +4719,7 @@ function bind() {
 
   // one listener for every list, button and link that carries data
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-sim],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],[data-big],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
+    const t = ev.target.closest('[data-copy],[data-fav],[data-ovw],[data-num],[data-loc],[data-add],[data-replace],[data-delete],[data-changes],[data-unlink],[data-store],[data-orders],[data-oq],[data-mode],[data-set],[data-choice],[data-act],[data-tab],[data-cst],[data-sim],[data-clr-st],[data-clr-sort],[data-clr-dept],[data-clr-dm],[data-clr-xmas],[data-open-plan],[data-open-clear],[data-codes-more],[data-mj],[data-mj-open],[data-mj-x],[data-ar],[data-ar-sc],[data-ar-pick],[data-top],[data-top-days],[data-sm],[data-sm-zero],[data-sm-move],[data-au],[data-au-open],[data-au-go],[data-au-zero],[data-au-move],[data-au-master],[data-grp],[data-stock-retry],[data-plcheck],[data-ploff],[data-big],[data-soon],[data-soon-scope],[data-soon-grp],[data-soon-zero],#ordersBar,#clearBar,#minusBar,#tipsBar,#topBar,#smBar,#soonBar,[data-tip],[data-tip-go],#updateBar,#crop,#openViewer');
     if (!t) return;
     if (t.dataset.big) { sfBig(t.dataset.big, t); return; }
     if (t.dataset.copy) { copyCode(t.dataset.copy); return; }
@@ -4553,6 +4749,8 @@ function bind() {
     if (t.dataset.tip || t.dataset.tipGo) { onTipClick(t); return; }
     if (t.id === 'topBar') { openTop(); return; }
     if (t.id === 'smBar') { openSm(); return; }
+    if (t.id === 'soonBar') { openSoon(); return; }
+    if (t.dataset.soon || t.dataset.soonScope || t.dataset.soonGrp || t.dataset.soonZero) { onSoonClick(t); return; }
     if (t.dataset.topDays) { S.topDays = +t.dataset.topDays; renderTop(); return; }
     if (t.dataset.top === 'refresh') { loadTop(); return; }
     if (t.dataset.sm || t.dataset.smZero || t.dataset.smMove) { onSmClick(t); return; }

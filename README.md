@@ -38,4 +38,4 @@ touching the real app. When `dx` is not in the tools, `d8` is used.
 
 `node --test tests/*.test.mjs` (minus-list sending, MYJYSK reader, news logic) and, with Playwright,
 `node tests/autologin.test.mjs` (the sign-in page script) and `node tests/ui-smoke.mjs` (the interface with a fake
-phone bridge).
+phone bridge), `node tests/soon-ui.mjs` (the "Uskoro status 21" screen).
